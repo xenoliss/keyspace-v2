@@ -1,0 +1,17 @@
+# Cargo build
+**/target
+
+# Cargo config
+.cargo
+
+# MacOS nuisances
+.DS_Store
+
+# Env
+.env
+
+# Program ELF files
+elf/
+
+# Proofs
+proofs/sp1/
