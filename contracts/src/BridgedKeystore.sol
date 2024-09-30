@@ -5,13 +5,41 @@ import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 
 import {IL1BlockOracle} from "./IL1BlockOracle.sol";
-import {KeystoreLib} from "./KeystoreLib.sol";
-
-// TODO: Use custom errors.
+import {KeystoreLib, RecordValuePreimages} from "./KeystoreLib.sol";
 
 contract BridgedKeystore {
     using RLPReader for RLPReader.RLPItem;
     using RLPReader for bytes;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                              EVENTS                                            //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Emitted when the Keystore storage root from the reference L2 is synchronized.
+    ///
+    /// @param epoch The new epoch.
+    /// @param keystoreRoot The new Keystore storage root.
+    event KeystoreRootSynchronized(uint256 epoch, bytes32 keystoreRoot);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                              ERRORS                                            //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when trying to synchronize the Keystore storage root from the reference L2 but the provided block
+    ///         header does not match with the block L1 block hash returned by the `l1BlockHashOracle` contract.
+    error InvalidBlockHeader();
+
+    /// @notice Thrown when trying to synchronize the Keystore storage root from the reference L2 but the provided the
+    ///         parameters do not match with the recoevered reference L2 OutputRoot.
+    error InvalidL2OutputRootPreimages();
+
+    /// @notice Thrown when trying to perform a Keyspace update based on the Keystore storage root of the current
+    ///         epoch, while already having performed at least one preconfirmed update during the current epoch.
+    error KeyspaceRecordAlreadyPreconfirmed();
+
+    /// @notice Thrown when trying to perform a Keyspace update based on a preconfirmed Keyspace record value, while not
+    ///         already having performed at least one preconfirmed update during the current epoch.
+    error KeyspaceRecordNotAlreadyPreconfirmed();
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                       INTERNAL STRUCTURES                                      //
@@ -121,7 +149,7 @@ contract BridgedKeystore {
 
         // Ensure the provided block header is valid.
         if (header.hash != IL1BlockOracle(l1BlockHashOracle).hash()) {
-            revert("Invalid block header");
+            revert InvalidBlockHeader();
         }
 
         // NOTE: MerkleTrie.get reverts if the slot does not exist.
@@ -149,12 +177,12 @@ contract BridgedKeystore {
                 }).toRlpItem().toUint()
             );
 
-            // Ensure the provided `l2StateRoot` is valid.
+            // Ensure the provided preimages of the `outputRoot` are valid.
             bytes32 version;
             bytes32 recomputedOutputRoot =
                 keccak256(abi.encodePacked(version, l2StateRoot, l2MessagePasserStorageRoot, l2BlockHash));
             if (recomputedOutputRoot != outputRoot) {
-                revert("Invalid L2 state root");
+                revert InvalidL2OutputRootPreimages();
             }
         }
 
@@ -169,7 +197,7 @@ contract BridgedKeystore {
         epoch++;
         epochRoots[epoch] = keystoreStorageRoot;
 
-        // TODO: Emit event.
+        emit KeystoreRootSynchronized({epoch: epoch, keystoreRoot: keystoreStorageRoot});
     }
 
     /// @notice Update a Keyspace record to a `newValue`.
@@ -183,21 +211,21 @@ contract BridgedKeystore {
     ///
     /// @param id The ID of the Keyspace record to update.
     /// @param newValue The new Keyspace value to store.
-    /// @param controller The controller address, responsible for authorizing the update.
-    /// @param storageHash The current storage hash commited in the Keyspace record.
+    /// @param currentValuePreimages The Keyspace record current value preimages.
     /// @param currentValueProof A proof to recover the user Keyspace record current value.
     /// @param proof A proof provided to the `controller` to authorize the update.
     function set(
         bytes32 id,
         bytes32 newValue,
-        address controller,
-        bytes32 storageHash,
+        RecordValuePreimages calldata currentValuePreimages,
         bytes[] calldata currentValueProof,
         bytes calldata proof
     ) public {
         // Get the user Keyspace record and ensure he has not already preconfirmed an update during the current epoch.
         mapping(bytes32 => bytes32) storage records = preconfirmedRecords[epoch];
-        require(records[id] == 0, "The record has already been preconfirmed for the current epoch.");
+        if (records[id] != 0) {
+            revert KeyspaceRecordAlreadyPreconfirmed();
+        }
 
         // Get the reference L2 Keystore storage root for the current epoch.
         bytes32 currentKeystoreRoot = epochRoots[epoch];
@@ -218,9 +246,8 @@ contract BridgedKeystore {
             records: records,
             id: id,
             currentValue: currentValue,
+            currentValuePreimages: currentValuePreimages,
             newValue: newValue,
-            controller: controller,
-            storageHash: storageHash,
             proof: proof
         });
     }
@@ -234,30 +261,29 @@ contract BridgedKeystore {
     ///      update during the current epoch (the `set` function should be used instead).
     ///
     /// @param id The ID of the Keyspace record to update.
+    /// @param currentValuePreimages The Keyspace record current value preimages.
     /// @param newValue The new Keyspace value to store.
-    /// @param controller The controller address, responsible for authorizing the update.
-    /// @param storageHash The current storage hash commited in the Keyspace record.
     /// @param proof A proof provided to the `controller` to authorize the update.
     function setFromPreconfirmation(
         bytes32 id,
+        RecordValuePreimages calldata currentValuePreimages,
         bytes32 newValue,
-        address controller,
-        bytes32 storageHash,
         bytes calldata proof
     ) public {
         // Get the user Keyspace record and ensure he has already preconfirmed an update during the current epoch.
         mapping(bytes32 id => bytes32 value) storage records = preconfirmedRecords[epoch];
         bytes32 currentValue = records[id];
-        require(currentValue != 0, "The record has not been preconfirmed for the current epoch.");
+        if (currentValue == 0) {
+            revert KeyspaceRecordNotAlreadyPreconfirmed();
+        }
 
         // Perform the authorized update on the preconfirmed records.
         KeystoreLib.set({
             records: records,
             id: id,
             currentValue: currentValue,
+            currentValuePreimages: currentValuePreimages,
             newValue: newValue,
-            controller: controller,
-            storageHash: storageHash,
             proof: proof
         });
     }
