@@ -65,6 +65,11 @@ contract BridgedKeystore {
     //                                          CONSTRUCTOR                                           //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    /// @notice Deploys a `BridgedKeystore` contract.
+    ///
+    /// @param l1BlockHashOracle_ The `L1Block` oracle contract address on this chain.
+    /// @param anchorStateRegistry_ The `AnchorStateRegistry` contract address on L1.
+    /// @param keystore_ The `Keystore` contract address on the reference L2.
     constructor(address l1BlockHashOracle_, address anchorStateRegistry_, address keystore_) {
         l1BlockHashOracle = l1BlockHashOracle_;
         anchorStateRegistry = anchorStateRegistry_;
@@ -78,7 +83,7 @@ contract BridgedKeystore {
     /// @notice Synchronizes the Keystore root from the reference L2.
     ///
     /// @dev The following proving steps are performed to validate the Keystore root:
-    ///         1. Prove the valdiity of the provided `blockHeaderRlp` against the L1 block hash returned by the
+    ///         1. Prove the valdity of the provided `blockHeaderRlp` against the L1 block hash returned by the
     ///            `l1BlockHashOracle`.
     ///         2. From the L1 state root hash (provided within the `blockHeaderRlp`), recover the storage root of the
     ///            AnchorStateRegistry contract on the L1.
@@ -90,7 +95,7 @@ contract BridgedKeystore {
     ///            `l2MessagePasserStorageRoot` and `l2BlockHash` parameter. See the link below for more details:
     ///            https://github.com/ethereum-optimism/optimism/blob/d141b53e4f52a8eb96a552d46c2e1c6c068b032e/op-service/eth/output.go#L49-L63
     ///         5. From the `l2StateRoot`, recover the Keystore storage root on the reference L2.
-    /// @dev The current implementation is only comptaible with OpStack chains due to the specifiticy of the
+    /// @dev The current implementation is only compatible with OpStack chains due to the specifiticy of the
     ///      AnchorStateRegistry contract and the way the `l2StateRoot` is recovered from the reference L2 OutputRoot.
     ///
     /// @param blockHeaderRlp The L1 block header RLP encoded.
@@ -171,10 +176,10 @@ contract BridgedKeystore {
     ///         This function should only be called if the user did not already performed an update during the current
     ///         epoch. Otherwise `setFromPreconfirmation` should be used.
     ///
-    /// @dev This function is taking the current Keyspace value that is recovered from `currentValueProof` against the
-    ///      reference L2 Keystore root stored for the current epoch. This function reverts if the user already
-    ///      preconfirmed a Keyspace update during the current epoch (the `setFromPreconfirmation` function should be
-    ///      used instead).
+    /// @dev This function is taking the current Keyspace value (recovered from `currentValueProof` against the
+    ///      reference L2 Keystore root stored for the current epoch), as the source of truth.
+    /// @dev Reverts if the user already preconfirmed a Keyspace update during the current epoch (the
+    ///      `setFromPreconfirmation` function should be used instead).
     ///
     /// @param id The ID of the Keyspace record to update.
     /// @param newValue The new Keyspace value to store.
@@ -190,7 +195,7 @@ contract BridgedKeystore {
         bytes[] calldata currentValueProof,
         bytes calldata proof
     ) public {
-        // Get the user Keyspace record and ensure the user did not already perform an update during the current epoch.
+        // Get the user Keyspace record and ensure he has not already preconfirmed an update during the current epoch.
         mapping(bytes32 => bytes32) storage records = preconfirmedRecords[epoch];
         require(records[id] == 0, "The record has already been preconfirmed for the current epoch.");
 
@@ -240,7 +245,7 @@ contract BridgedKeystore {
         bytes32 storageHash,
         bytes calldata proof
     ) public {
-        // Get the user Keyspace record and ensure the user already performed an update during the current epoch.
+        // Get the user Keyspace record and ensure he has already preconfirmed an update during the current epoch.
         mapping(bytes32 id => bytes32 value) storage records = preconfirmedRecords[epoch];
         bytes32 currentValue = records[id];
         require(currentValue != 0, "The record has not been preconfirmed for the current epoch.");

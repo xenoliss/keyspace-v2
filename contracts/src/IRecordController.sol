@@ -2,7 +2,7 @@
 pragma solidity ^0.8.27;
 
 interface IRecordController {
-    /// @notice Authorizes (or not) the update of a Keyspace record.
+    /// @notice Authorizes (or not) a Keyspace record update.
     ///
     /// @param id The ID of the Keyspace record being updated.
     /// @param currentValue The Keyspace record current value.

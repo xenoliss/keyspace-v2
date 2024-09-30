@@ -17,7 +17,7 @@ contract Keystore {
     function set(bytes32 id, bytes32 newValue, address controller, bytes32 storageHash, bytes calldata proof) public {
         bytes32 currentValue = records[id];
 
-        // Perform the authorized update on the preconfirmed records.
+        // Perform the authorized update on the records.
         KeystoreLib.set({
             records: records,
             id: id,
