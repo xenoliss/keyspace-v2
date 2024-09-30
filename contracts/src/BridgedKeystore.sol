@@ -5,7 +5,7 @@ import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 
 import {IL1BlockOracle} from "./IL1BlockOracle.sol";
-import {KeystoreLib, RecordValuePreimages} from "./KeystoreLib.sol";
+import {KeystoreLib, RecordPreimages} from "./KeystoreLib.sol";
 
 contract BridgedKeystore {
     using RLPReader for RLPReader.RLPItem;
@@ -200,7 +200,7 @@ contract BridgedKeystore {
         emit KeystoreRootSynchronized({epoch: epoch, keystoreRoot: keystoreStorageRoot});
     }
 
-    /// @notice Update a Keyspace record to a `newValue`.
+    /// @notice Update a Keyspace record to a `newValueHash`.
     ///         This function should only be called if the user did not already performed an update during the current
     ///         epoch. Otherwise `setFromPreconfirmation` should be used.
     ///
@@ -210,14 +210,16 @@ contract BridgedKeystore {
     ///      `setFromPreconfirmation` function should be used instead).
     ///
     /// @param id The ID of the Keyspace record to update.
-    /// @param newValue The new Keyspace value to store.
-    /// @param currentValuePreimages The Keyspace record current value preimages.
-    /// @param currentValueProof A proof to recover the user Keyspace record current value.
+    /// @param currentValueHashPreimages The Keyspace record current value hash preimages.
+    /// @param newValueHash The new Keyspace value hash to store.
+    /// @param newValueHashPreimages The Keyspace record new value hash preimages.
+    /// @param currentValueProof A proof to recover the user Keyspace record current value hash.
     /// @param proof A proof provided to the `controller` to authorize the update.
     function set(
         bytes32 id,
-        bytes32 newValue,
-        RecordValuePreimages calldata currentValuePreimages,
+        RecordPreimages calldata currentValueHashPreimages,
+        bytes32 newValueHash,
+        RecordPreimages calldata newValueHashPreimages,
         bytes[] calldata currentValueProof,
         bytes calldata proof
     ) public {
@@ -230,10 +232,10 @@ contract BridgedKeystore {
         // Get the reference L2 Keystore storage root for the current epoch.
         bytes32 currentKeystoreRoot = epochRoots[epoch];
 
-        // From the reference L2 Keystore storage root, recover the user Keyspace record current value.
+        // From the reference L2 Keystore storage root, recover the user Keyspace record current value hash.
         bytes32 keyspaceRecordSlot = keccak256(abi.encodePacked(id, bytes32(0)));
         bytes32 keyspaceRecordSlotHash = keccak256(abi.encodePacked(keyspaceRecordSlot));
-        bytes32 currentValue = bytes32(
+        bytes32 currentValueHash = bytes32(
             MerkleTrie.get({
                 _key: abi.encodePacked(keyspaceRecordSlotHash),
                 _proof: currentValueProof,
@@ -245,14 +247,15 @@ contract BridgedKeystore {
         KeystoreLib.set({
             records: records,
             id: id,
-            currentValue: currentValue,
-            currentValuePreimages: currentValuePreimages,
-            newValue: newValue,
+            currentValueHash: currentValueHash,
+            currentValueHashPreimages: currentValueHashPreimages,
+            newValueHash: newValueHash,
+            newValueHashPreimages: newValueHashPreimages,
             proof: proof
         });
     }
 
-    /// @notice Update a Keyspace record to a `newValue`.
+    /// @notice Update a Keyspace record to a `newValueHash`.
     ///         This function should only be called if the user already performed an update in the current epoch.
     ///         Otherwise `set` should be used.
     ///
@@ -261,19 +264,21 @@ contract BridgedKeystore {
     ///      update during the current epoch (the `set` function should be used instead).
     ///
     /// @param id The ID of the Keyspace record to update.
-    /// @param currentValuePreimages The Keyspace record current value preimages.
-    /// @param newValue The new Keyspace value to store.
+    /// @param currentValueHashPreimages The Keyspace record current value hash preimages.
+    /// @param newValueHash The new Keyspace value hash to store.
+    /// @param newValueHashPreimages The Keyspace record new value hash preimages.
     /// @param proof A proof provided to the `controller` to authorize the update.
     function setFromPreconfirmation(
         bytes32 id,
-        RecordValuePreimages calldata currentValuePreimages,
-        bytes32 newValue,
+        RecordPreimages calldata currentValueHashPreimages,
+        bytes32 newValueHash,
+        RecordPreimages calldata newValueHashPreimages,
         bytes calldata proof
     ) public {
         // Get the user Keyspace record and ensure he has already preconfirmed an update during the current epoch.
         mapping(bytes32 id => bytes32 value) storage records = preconfirmedRecords[epoch];
-        bytes32 currentValue = records[id];
-        if (currentValue == 0) {
+        bytes32 currentValueHash = records[id];
+        if (currentValueHash == 0) {
             revert KeyspaceRecordNotAlreadyPreconfirmed();
         }
 
@@ -281,9 +286,10 @@ contract BridgedKeystore {
         KeystoreLib.set({
             records: records,
             id: id,
-            currentValue: currentValue,
-            currentValuePreimages: currentValuePreimages,
-            newValue: newValue,
+            currentValueHash: currentValueHash,
+            currentValueHashPreimages: currentValueHashPreimages,
+            newValueHash: newValueHash,
+            newValueHashPreimages: newValueHashPreimages,
             proof: proof
         });
     }
