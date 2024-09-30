@@ -22,10 +22,10 @@ struct Proof {
 }
 
 contract BridgedKeystoreTest is Test {
-    function testForkBaseSepolia() public {
+    function test_syncRoot_ForkBaseSepolia() public {
         // Generate the proof for the AnchorStateRegistry state on the L1.
         // NOTE: The proof must be generated for the L1 block number that is currently available on the L2.
-        // cast proof 0x4C8BA32A5DAC2A720bb35CeDB51D6B067D104205 0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49 --rpc-url https://eth-sepolia.public.blastapi.io --block 6771802 > test/proof_l2.json
+        // cast proof 0x4C8BA32A5DAC2A720bb35CeDB51D6B067D104205  0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49 --rpc-url https://eth-sepolia.public.blastapi.io --block 6771802 > test/proof_l2.json
 
         // Generate the proof for the Keystore storage root on the L2.
         // NOTE: The proof must be generated for the L2 block number that was commited in the AnchorStateRegistry output.

@@ -11,3 +11,8 @@ remappings = [
 ]
 
 fs_permissions = [{ access = 'read', path = './test/' }]
+
+
+[fmt]
+sort_imports = true
+wrap_comments = true
