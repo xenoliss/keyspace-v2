@@ -1,4 +1,4 @@
-use alloy::primitives::keccak256;
+use alloy::{eips::eip4844::kzg_to_versioned_hash, hex::ToHexExt, primitives::keccak256};
 use bls12_381::Scalar;
 use math::{
     kzg::{trusted_setup, Kzg},
@@ -39,15 +39,25 @@ async fn main() {
 
     // 5. Commit to the set of com(Li).
     let (lis_poly, lis_com) = kzg.commit_set(&basis_coms);
-    let basis_coms_com = keccak256(lis_com);
-    println!("Lagrange basis commitments commitment: {basis_coms_com:?}");
+    let basis_coms_com = lis_com;
+    println!(
+        "Lagrange basis commitments commitment: 0x{:}",
+        basis_coms_com.encode_hex()
+    );
 
     // 6. Generate a proof for the 3rd com(Li).
     let z: Scalar = Scalar::from(3);
     let y = basis_coms.get(2).unwrap();
+    println!("z: {z:} y: {y:?}",);
+
     let proof = kzg.generate_proof(&lis_poly, &z, y);
-    println!("Lagrange basis 3rd commitments proof: {proof:?}");
+    println!(
+        "Lagrange basis 3rd commitments proof: 0x{:}",
+        proof.encode_hex()
+    );
 
     // 7. Verify the proof.
     println!("Proof valid: {}", kzg.verify(&lis_com, &proof, &z, y,));
+
+    println!("{}", kzg_to_versioned_hash(&basis_coms_com));
 }
