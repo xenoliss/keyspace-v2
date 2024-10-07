@@ -4,7 +4,6 @@ use alloy::{
     hex::ToHexExt,
     providers::{Provider, ProviderBuilder},
 };
-use std::ops::Add;
 use std::str::FromStr;
 
 use bindings::{AnchorStateRegistry, L1Block};

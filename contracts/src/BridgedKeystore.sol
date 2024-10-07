@@ -4,8 +4,9 @@ pragma solidity ^0.8.27;
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 
-import {IL1BlockOracle} from "./IL1BlockOracle.sol";
-import {KeystoreLib, RecordPreimages} from "./KeystoreLib.sol";
+import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
+import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
+import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 
 contract BridgedKeystore {
     using RLPReader for RLPReader.RLPItem;
@@ -15,47 +16,44 @@ contract BridgedKeystore {
     //                                              EVENTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Emitted when the Keystore storage root from the reference L2 is synchronized.
+    /// @notice Emitted when the Keystore storage root from the reference L2 is successfully synchronized.
     ///
-    /// @param epoch The new epoch.
-    /// @param keystoreRoot The new Keystore storage root.
-    event KeystoreRootSynchronized(uint256 epoch, bytes32 keystoreRoot);
+    /// @param keystoreStorageRoot The new synchronized Keystore storage root.
+    event KeystoreRootSynchronized(bytes32 keystoreStorageRoot);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              ERRORS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Thrown when trying to synchronize the Keystore storage root from the reference L2 but the provided block
-    ///         header does not match with the block L1 block hash returned by the `l1BlockHashOracle` contract.
+    /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
+    ///         block header does not match the L1 block hash returned by the `l1BlockHashOracle` contract.
     error InvalidBlockHeader();
 
-    /// @notice Thrown when trying to synchronize the Keystore storage root from the reference L2 but the provided the
-    ///         parameters do not match with the recoevered reference L2 OutputRoot.
+    /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
+    ///         parameters do not match the recovered reference L2 OutputRoot.
     error InvalidL2OutputRootPreimages();
 
-    /// @notice Thrown when trying to perform a Keyspace update based on the Keystore storage root of the current
-    ///         epoch, while already having performed at least one preconfirmed update during the current epoch.
-    error KeyspaceRecordAlreadyPreconfirmed();
+    /// @notice Thrown when attempting to preconfirm a Keyspace record update (non-forking method), but the confirmed
+    ///         ValueHash (recovered from the `keystoreStorageRoot`) was not found at the provided lookup index in the
+    ///         active fork history of the Keyspace record.
+    ///
+    /// @param confirmedValueHash The confirmed ValueHash recovered from the `keystoreStorageRoot`.
+    /// @param preconfirmedValueHash The preconfirmed ValueHash found at the provided lookup index.
+    error InvalidPreconfirmedValueHash(bytes32 confirmedValueHash, bytes32 preconfirmedValueHash);
 
-    /// @notice Thrown when trying to perform a Keyspace update based on a preconfirmed Keyspace record value, while not
-    ///         already having performed at least one preconfirmed update during the current epoch.
-    error KeyspaceRecordNotAlreadyPreconfirmed();
+    /// @notice Thrown when attempting to preconfirm a Keyspace record update (forking method), but the confirmed
+    ///         ValueHash (recovered from the `keystoreStorageRoot`) and the ValueHash at the given lookup index in the
+    ///         active fork history are the same.
+    ///
+    /// @param valueHash The common ValueHash.
+    error NoValueHashConflict(bytes32 valueHash);
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
-    //                                       INTERNAL STRUCTURES                                      //
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /// @dev Block header structure returned by `_parseBlockHeader()`.
-    struct _BlockHeader {
-        /// @dev The block hash.
-        bytes32 hash;
-        /// @dev The state root hash.
-        bytes32 stateRootHash;
-        /// @dev The block number.
-        uint256 number;
-        /// @dev The block timestamp.
-        uint256 timestamp;
-    }
+    /// @notice Thrown when attempting to preconfirm a Keyspace record update (non-forking method), but the nonces
+    ///         committed in the conflicting ValueHashes are not equal.
+    ///
+    /// @param confirmedNonce The nonce committed in the confirmed ValueHash recovered from the `keystoreStorageRoot`.
+    /// @param preconfirmedNonce The nonce committed in the preconfirmed ValueHash found at the provided lookup index.
+    error InvalidConflictingNonce(uint256 confirmedNonce, uint256 preconfirmedNonce);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                           CONSTANTS                                            //
@@ -63,14 +61,14 @@ contract BridgedKeystore {
 
     /// @notice The slot where the reference L2 OutputRoot is stored on the `AnchorStateRegistry` L1 contract.
     ///
-    /// @dev This is computed from keccak256(abi.encodePacked(bytes32(0), bytes32(uint256(1)))). This slot matches with
-    ///      calling `anchors(0)` on the AnchorStateRegistry contract.
+    /// @dev This is computed as keccak256(abi.encodePacked(bytes32(0), bytes32(uint256(1)))). This slot corresponds
+    ///      to calling `anchors(0)` on the `AnchorStateRegistry` contract.
     bytes32 constant ANCHOR_STATE_REGISTRY_SLOT = 0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49;
 
     /// @notice The address of the `L1Block` contract on this L2.
     address public immutable l1BlockHashOracle;
 
-    /// @notice The address of the `AnchorStateRegistry` contract on the L1.
+    /// @notice The address of the `AnchorStateRegistry` contract on L1.
     address public immutable anchorStateRegistry;
 
     /// @notice The address of the `Keystore` contract on the reference L2.
@@ -80,14 +78,19 @@ contract BridgedKeystore {
     //                                            STORAGE                                             //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice The current epoch.
-    uint256 public epoch;
+    /// @notice The reference L2 Keystore storage root.
+    bytes32 public keystoreStorageRoot;
 
-    /// @notice The reference L2 Keystore storage root per epoch.
-    mapping(uint256 epoch => bytes32 root) public epochRoots;
+    /// @notice The active fork for each Keyspace ID.
+    ///
+    /// @dev Preconfirmations are organized into "forks," which are sequences of successive ValueHashes set for a
+    ///      given Keyspace record. A new fork is created if a conflict arises between the active fork's history
+    ///      and the confirmed ValueHash (recovered from the L2 Keystore storage root). The active fork for any
+    ///      Keyspace record is always the most recent one created.
+    mapping(bytes32 id => uint256 activeFork) public activeForks;
 
-    /// @notice The preconfirmed Keyspace record per epoch.
-    mapping(uint256 epoch => mapping(bytes32 id => bytes32 value)) public preconfirmedRecords;
+    /// @notice Preconfirmed Keyspace records for each fork.
+    mapping(bytes32 id => mapping(uint256 fork => bytes32[] valueHashes)) public preconfirmedValueHashes;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                          CONSTRUCTOR                                           //
@@ -95,9 +98,9 @@ contract BridgedKeystore {
 
     /// @notice Deploys a `BridgedKeystore` contract.
     ///
-    /// @param l1BlockHashOracle_ The `L1Block` oracle contract address on this chain.
-    /// @param anchorStateRegistry_ The `AnchorStateRegistry` contract address on L1.
-    /// @param keystore_ The `Keystore` contract address on the reference L2.
+    /// @param l1BlockHashOracle_ The address of the `L1Block` oracle contract on this chain.
+    /// @param anchorStateRegistry_ The address of the `AnchorStateRegistry` contract on L1.
+    /// @param keystore_ The address of the `Keystore` contract on the reference L2.
     constructor(address l1BlockHashOracle_, address anchorStateRegistry_, address keystore_) {
         l1BlockHashOracle = l1BlockHashOracle_;
         anchorStateRegistry = anchorStateRegistry_;
@@ -111,28 +114,30 @@ contract BridgedKeystore {
     /// @notice Synchronizes the Keystore root from the reference L2.
     ///
     /// @dev The following proving steps are performed to validate the Keystore root:
-    ///         1. Prove the valdity of the provided `blockHeaderRlp` against the L1 block hash returned by the
-    ///            `l1BlockHashOracle`.
-    ///         2. From the L1 state root hash (provided within the `blockHeaderRlp`), recover the storage root of the
-    ///            AnchorStateRegistry contract on the L1.
-    ///         3. From the storage root of the AnchorStateRegistry, recover the reference L2 OutputRoot stored at slot
-    ///            `ANCHOR_STATE_REGISTRY_SLOT`. This slot matches with calling `anchors(0)` on the AnchorStateRegistry
-    ///            contract.
-    ///         4. From the recovered reference L2 OutputRoot, ensure the provided `l2StateRoot` is valid. This is
-    ///            performed by recomputing the L2 OutputRoot manually from the given `l2StateRoot`,
-    ///            `l2MessagePasserStorageRoot` and `l2BlockHash` parameter. See the link below for more details:
-    ///            https://github.com/ethereum-optimism/optimism/blob/d141b53e4f52a8eb96a552d46c2e1c6c068b032e/op-service/eth/output.go#L49-L63
-    ///         5. From the `l2StateRoot`, recover the Keystore storage root on the reference L2.
-    /// @dev The current implementation is only compatible with OpStack chains due to the specifiticy of the
-    ///      AnchorStateRegistry contract and the way the `l2StateRoot` is recovered from the reference L2 OutputRoot.
+    ///      1. Prove the validity of the provided `blockHeaderRlp` against the L1 block hash returned by the
+    ///         `l1BlockHashOracle`.
+    ///      2. From the L1 state root hash (within the `blockHeaderRlp`), recover the storage root of the
+    ///         `AnchorStateRegistry` contract on L1.
+    ///      3. From the storage root of the `AnchorStateRegistry`, recover the reference L2 OutputRoot stored at slot
+    ///         `ANCHOR_STATE_REGISTRY_SLOT`. This slot corresponds to calling `anchors(0)` on the `AnchorStateRegistry`
+    ///         contract.
+    ///      4. From the recovered reference L2 OutputRoot, verify the provided `l2StateRoot`. This is done by
+    ///         recomputing the L2 OutputRoot using the `l2StateRoot`, `l2MessagePasserStorageRoot`, and `l2BlockHash`
+    ///         parameters. For more details, see the link:
+    ///         https://github.com/ethereum-optimism/optimism/blob/d141b53e4f52a8eb96a552d46c2e1c6c068b032e/op-service/eth/output.go#L49-L63
+    ///      5. From the `l2StateRoot`, recover the Keystore storage root on the reference L2.
     ///
-    /// @param blockHeaderRlp The L1 block header RLP encoded.
-    /// @param anchorStateRegistryAccountProof The AnchorStateRegistry account proof on L1.
-    /// @param anchorStateRegistryStorageProof The AnchorStateRegistry storage proof (of the reference L2 root) on L1.
-    /// @param keystoreAccountProof The Keystore account proof on the reference L2.
-    /// @param l2StateRoot The reference L2 state root.
-    /// @param l2MessagePasserStorageRoot The MessagePasser storage root on the reference L2.
-    /// @param l2BlockHash The reference L2 block hash.
+    /// @dev The current implementation is compatible only with OpStack chains due to the specifics of the
+    ///      `AnchorStateRegistry` contract and how the `l2StateRoot` is recovered from the reference L2 OutputRoot.
+    ///
+    /// @param blockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param anchorStateRegistryAccountProof The account proof of the `AnchorStateRegistry` contract on L1.
+    /// @param anchorStateRegistryStorageProof The storage proof of the reference L2 root within the
+    ///                                        `AnchorStateRegistry` on L1.
+    /// @param keystoreAccountProof The account proof of the Keystore contract on the reference L2.
+    /// @param l2StateRoot The state root of the reference L2.
+    /// @param l2MessagePasserStorageRoot The storage root of the `MessagePasser` contract on the reference L2.
+    /// @param l2BlockHash The block hash of the reference L2.
     function syncRoot(
         bytes memory blockHeaderRlp,
         bytes[] memory anchorStateRegistryAccountProof,
@@ -145,7 +150,7 @@ contract BridgedKeystore {
         // TODO: Using the execution root might make it hard to submit a valid proof.
         //       Consider proving from the Beacon root instead.
 
-        _BlockHeader memory header = _parseBlockHeader(blockHeaderRlp);
+        BlockHeader memory header = BlockLib.parseBlockHeader(blockHeaderRlp);
 
         // Ensure the provided block header is valid.
         if (header.hash != IL1BlockOracle(l1BlockHashOracle).hash()) {
@@ -188,133 +193,189 @@ contract BridgedKeystore {
 
         // From the L2 state root, recover the Keystore storage root.
         bytes32 keystoreHash = keccak256(abi.encodePacked(keystore));
-        bytes32 keystoreStorageRoot = bytes32(
+        bytes32 keystoreStorageRoot_ = bytes32(
             MerkleTrie.get({_key: abi.encodePacked(keystoreHash), _proof: keystoreAccountProof, _root: l2StateRoot})
                 .toRlpItem().toList()[2].toUint()
         );
 
-        // Start a new epoch and set the reference L2 Keystore storage root.
-        epoch++;
-        epochRoots[epoch] = keystoreStorageRoot;
+        // Set the reference L2 Keystore storage root.
+        keystoreStorageRoot = keystoreStorageRoot_;
 
-        emit KeystoreRootSynchronized({epoch: epoch, keystoreRoot: keystoreStorageRoot});
+        emit KeystoreRootSynchronized({keystoreStorageRoot: keystoreStorageRoot});
     }
 
-    /// @notice Update a Keyspace record to a `newValueHash`.
-    ///         This function should only be called if the user did not already performed an update during the current
-    ///         epoch. Otherwise `setFromPreconfirmation` should be used.
+    /// @notice Preconfirms a new update to a Keyspace record.
     ///
-    /// @dev This function is taking the current Keyspace value (recovered from `currentValueProof` against the
-    ///      reference L2 Keystore root stored for the current epoch), as the source of truth.
-    /// @dev Reverts if the user already preconfirmed a Keyspace update during the current epoch (the
-    ///      `setFromPreconfirmation` function should be used instead).
+    /// @dev This function should only be called if the new preconfirmed update can be added on top of the active fork
+    ///      history of the targeted Keyspace record.
     ///
-    /// @param id The ID of the Keyspace record to update.
-    /// @param currentValueHashPreimages The Keyspace record current value hash preimages.
-    /// @param newValueHash The new Keyspace value hash to store.
-    /// @param newValueHashPreimages The Keyspace record new value hash preimages.
-    /// @param currentValueProof A proof to recover the user Keyspace record current value hash.
-    /// @param proof A proof provided to the `controller` to authorize the update.
-    function set(
+    /// @param id The ID of the Keyspace record being updated.
+    /// @param confirmedValueHashInclusionProof The inclusion proof for recovering the confirmed ValueHash of the
+    ///                                         Keyspace record from the `keystoreStorageRoot`.
+    /// @param confirmedIndex The index of the confirmed ValueHash in the active fork history of the Keyspace record.
+    /// @param currentValueHashPreimages The preimages of the ValuHash used. For the very first preconfirmation the
+    ///                                  ValueHash used will be the confirmed ValueHash recovered from the current
+    ///                                  `keystoreStorageRoot`. Otherwise the ValueHash used will be the latest
+    ///                                  ValueHash of the current active fork history associted with that Keyspace
+    ///                                  record.
+    /// @param newValueHash The new ValueHash to be stored in the Keyspace record.
+    /// @param newValueHashPreimages The preimages of the new ValueHash.
+    /// @param controllerProof A proof provided to the Keyspace record `controller` to authorize the update.
+    function preconfirmUpdate(
         bytes32 id,
-        RecordPreimages calldata currentValueHashPreimages,
+        bytes[] calldata confirmedValueHashInclusionProof,
+        uint256 confirmedIndex,
+        ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
-        RecordPreimages calldata newValueHashPreimages,
-        bytes[] calldata currentValueProof,
-        bytes calldata proof
+        ValueHashPreimages calldata newValueHashPreimages,
+        bytes calldata controllerProof
     ) public {
-        // Get the user Keyspace record and ensure he has not already preconfirmed an update during the current epoch.
-        mapping(bytes32 => bytes32) storage records = preconfirmedRecords[epoch];
-        if (records[id] != 0) {
-            revert KeyspaceRecordAlreadyPreconfirmed();
+        bytes32 confirmedValueHash =
+            _recoverConfirmedValueHash({id: id, confirmedValueHashInclusionProof: confirmedValueHashInclusionProof});
+
+        // Get the active fork history for the Keyspace record.
+        uint256 activeFork = activeForks[id];
+        bytes32[] storage preconfirmedValueHashes_ = preconfirmedValueHashes[id][activeFork];
+
+        // By default assume the `confirmedValueHash` to be the current one.
+        bytes32 currentValueHash = confirmedValueHash;
+
+        // If the active fork is not empty, ensure that the `confirmedValueHash` is part of its history.
+        // If it is, the successive updates that have been applied on top of it are consiered valid and we peek
+        // the latest one as the current ValueHash.
+        if (preconfirmedValueHashes_.length > 0) {
+            bytes32 valueHash = preconfirmedValueHashes_[confirmedIndex];
+            if (valueHash != confirmedValueHash) {
+                revert InvalidPreconfirmedValueHash({
+                    confirmedValueHash: confirmedValueHash,
+                    preconfirmedValueHash: valueHash
+                });
+            }
+
+            currentValueHash = preconfirmedValueHashes_[preconfirmedValueHashes_.length - 1];
         }
 
-        // Get the reference L2 Keystore storage root for the current epoch.
-        bytes32 currentKeystoreRoot = epochRoots[epoch];
-
-        // From the reference L2 Keystore storage root, recover the user Keyspace record current value hash.
-        bytes32 keyspaceRecordSlot = keccak256(abi.encodePacked(id, bytes32(0)));
-        bytes32 keyspaceRecordSlotHash = keccak256(abi.encodePacked(keyspaceRecordSlot));
-        bytes32 currentValueHash = bytes32(
-            MerkleTrie.get({
-                _key: abi.encodePacked(keyspaceRecordSlotHash),
-                _proof: currentValueProof,
-                _root: currentKeystoreRoot
-            }).toRlpItem().toUint()
-        );
-
-        // Perform the authorized update on the preconfirmed records.
-        KeystoreLib.set({
-            records: records,
+        KeystoreLib.verifyNewValueHash({
             id: id,
             currentValueHash: currentValueHash,
             currentValueHashPreimages: currentValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
-            proof: proof
+            controllerProof: controllerProof
         });
+
+        // Add the `newValueHash` to the latest fork history.
+        preconfirmedValueHashes_.push(newValueHash);
+
+        // TODO: Emit event.
     }
 
-    /// @notice Update a Keyspace record to a `newValueHash`.
-    ///         This function should only be called if the user already performed an update in the current epoch.
-    ///         Otherwise `set` should be used.
+    /// @notice Preconfirms a new Keyspace record update in case of a conflict.
     ///
-    /// @dev This function is taking the current Keyspace value stored in the `preconfirmedRecords` for the current
-    ///      epoch as the source of truth. This function reverts if the user did not already preconfirm a Keyspace
-    ///      update during the current epoch (the `set` function should be used instead).
+    /// @dev This function should only be called if the new preconfirmed update cannot be added on top of the active
+    ///      fork history of the targeted Keyspace record. This situation occurs when the new confirmed ValueHash
+    ///      (recovered from the `keystoreStorageRoot`) conflicts with an existing ValueHash in the Keyspace record’s
+    ///      fork history.
     ///
-    /// @param id The ID of the Keyspace record to update.
-    /// @param currentValueHashPreimages The Keyspace record current value hash preimages.
-    /// @param newValueHash The new Keyspace value hash to store.
-    /// @param newValueHashPreimages The Keyspace record new value hash preimages.
-    /// @param proof A proof provided to the `controller` to authorize the update.
-    function setFromPreconfirmation(
+    /// @param id The ID of the Keyspace record being updated.
+    /// @param confirmedValueHashInclusionProof The inclusion proof to recover the confirmed ValueHash of the Keyspace
+    ///                                         record from the `keystoreStorageRoot`.
+    /// @param confirmedValueHashPreimages The preimages of the confirmed ValueHash recovered from the
+    ///                                    `keystoreStorageRoot`.
+    /// @param newValueHash The new ValueHash to be stored in the Keyspace record.
+    /// @param newValueHashPreimages The preimages of the new ValueHash.
+    /// @param conflictingIndex The index of the conflicting ValueHash in the active fork history of the Keyspace
+    ///                         record.
+    /// @param conflictingValueHashPreimages The preimages of the ValueHash expected at the `conflictingIndex` in the
+    ///                                      active fork history.
+    /// @param controllerProof A proof provided to the Keyspace record `controller` to authorize the update.
+    function preconfirmUpdateWithFork(
         bytes32 id,
-        RecordPreimages calldata currentValueHashPreimages,
+        bytes[] calldata confirmedValueHashInclusionProof,
+        ValueHashPreimages calldata confirmedValueHashPreimages,
         bytes32 newValueHash,
-        RecordPreimages calldata newValueHashPreimages,
-        bytes calldata proof
+        ValueHashPreimages calldata newValueHashPreimages,
+        uint256 conflictingIndex,
+        ValueHashPreimages calldata conflictingValueHashPreimages,
+        bytes calldata controllerProof
     ) public {
-        // Get the user Keyspace record and ensure he has already preconfirmed an update during the current epoch.
-        mapping(bytes32 id => bytes32 value) storage records = preconfirmedRecords[epoch];
-        bytes32 currentValueHash = records[id];
-        if (currentValueHash == 0) {
-            revert KeyspaceRecordNotAlreadyPreconfirmed();
+        bytes32 confirmedValueHash =
+            _recoverConfirmedValueHash({id: id, confirmedValueHashInclusionProof: confirmedValueHashInclusionProof});
+
+        // NOTE: We do not check that the `confirmedValueHashPreimages` effectively hash to `confirmedValueHash`.
+        //       This check is performed later in `KeystoreLib.verifyNewValueHash` where we use `confirmedValueHash`
+        //       as the current ValueHash.
+
+        // Get the conflicting ValueHash from the latest fork history.
+        uint256 activeFork = activeForks[id];
+        bytes32[] storage preconfirmedValueHashes_ = preconfirmedValueHashes[id][activeFork];
+        bytes32 conflictingValueHash = preconfirmedValueHashes_[conflictingIndex];
+
+        // Ensure the ValueHashes are effectively different (else there is no conflict).
+        if (conflictingValueHash == confirmedValueHash) {
+            revert NoValueHashConflict({valueHash: confirmedValueHash});
         }
 
-        // Perform the authorized update on the preconfirmed records.
-        KeystoreLib.set({
-            records: records,
+        // Ensure that the `conflictingValueHashPreimages` hash to `conflictingValueHash`.
+        KeystoreLib.verifyRecordPreimages({
+            valueHash: conflictingValueHash,
+            valueHashPreimages: conflictingValueHashPreimages
+        });
+
+        // Ensure the nonce of the conflicting ValueHashes are equal.
+        if (confirmedValueHashPreimages.nonce != conflictingValueHashPreimages.nonce) {
+            revert InvalidConflictingNonce({
+                confirmedNonce: confirmedValueHashPreimages.nonce,
+                preconfirmedNonce: conflictingValueHashPreimages.nonce
+            });
+        }
+
+        // Use the `confirmedValueHash` as the `currentValueHash` to authorize the `newValueHash`.
+        KeystoreLib.verifyNewValueHash({
             id: id,
-            currentValueHash: currentValueHash,
-            currentValueHashPreimages: currentValueHashPreimages,
+            currentValueHash: confirmedValueHash,
+            currentValueHashPreimages: confirmedValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
-            proof: proof
+            controllerProof: controllerProof
         });
+
+        // Avoid stack too deep error...
+        bytes32 id_ = id;
+
+        // Create a new fork history.
+        activeFork += 1;
+        activeForks[id_] = activeFork;
+        preconfirmedValueHashes_ = preconfirmedValueHashes[id_][activeFork];
+        preconfirmedValueHashes_.push(confirmedValueHash);
+        preconfirmedValueHashes_.push(newValueHash);
+
+        // TODO: Emit event.
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                        INTERNAL FUNCTIONS                                      //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Parses RLP-encoded block header.
+    /// @notice Recovers the confirmed ValueHash of a Keyspace record from the current `keystoreStorageRoot`.
     ///
-    /// @dev Implementation is from
-    /// https://github.com/lidofinance/curve-merkle-oracle/blob/fffd375659358af54a6e8bbf8c3aa44188894c81/contracts/StateProofVerifier.sol.
-    ///
-    /// @param headerRlpBytes The encoded RLP-encoded block header.
-    ///
-    /// @return The decoded `_BlockHeader`.
-    function _parseBlockHeader(bytes memory headerRlpBytes) private pure returns (_BlockHeader memory) {
-        _BlockHeader memory result;
-        RLPReader.RLPItem[] memory headerFields = headerRlpBytes.toRlpItem().toList();
-
-        result.stateRootHash = bytes32(headerFields[3].toUint());
-        result.number = headerFields[8].toUint();
-        result.timestamp = headerFields[11].toUint();
-        result.hash = keccak256(headerRlpBytes);
-
-        return result;
+    /// @param id The ID of the Keyspace record.
+    /// @param confirmedValueHashInclusionProof The inclusion proof for the ValueHash of the Keyspace record committed
+    ///                                         in the current `keystoreStorageRoot`.
+    function _recoverConfirmedValueHash(bytes32 id, bytes[] calldata confirmedValueHashInclusionProof)
+        private
+        view
+        returns (bytes32)
+    {
+        // From the reference L2 Keystore storage root, recover the user Keyspace record confirmed value hash.
+        bytes32 keyspaceRecordSlot = keccak256(abi.encodePacked(id, bytes32(0)));
+        bytes32 keyspaceRecordSlotHash = keccak256(abi.encodePacked(keyspaceRecordSlot));
+        return bytes32(
+            MerkleTrie.get({
+                _key: abi.encodePacked(keyspaceRecordSlotHash),
+                _proof: confirmedValueHashInclusionProof,
+                _root: keystoreStorageRoot
+            }).toRlpItem().toUint()
+        );
     }
 }
