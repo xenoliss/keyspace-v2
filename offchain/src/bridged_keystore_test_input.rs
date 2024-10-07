@@ -6,13 +6,9 @@ use alloy::{
 };
 use std::str::FromStr;
 
-use bindings::{AnchorStateRegistry, L1Block};
+use crate::bindings::{AnchorStateRegistry, L1Block};
 
-mod bindings;
-
-#[tokio::main]
-
-async fn main() {
+pub async fn generate_test_input() {
     let base_sepolia_rpc_url = "https://sepolia.base.org".parse().unwrap();
     let base_sepolia_provider = ProviderBuilder::new().on_http(base_sepolia_rpc_url);
 
