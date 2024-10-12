@@ -7,6 +7,8 @@ import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
+import {L1ProofLib, L1BlockHashProof} from "./libs/L1ProofLib.sol";
+
 
 contract BridgedKeystore {
     using RLPReader for RLPReader.RLPItem;
@@ -131,6 +133,7 @@ contract BridgedKeystore {
     ///      `AnchorStateRegistry` contract and how the `l2StateRoot` is recovered from the reference L2 OutputRoot.
     ///
     /// @param blockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param l1BlockHashProof The proof of the L1 block hash.
     /// @param anchorStateRegistryAccountProof The account proof of the `AnchorStateRegistry` contract on L1.
     /// @param anchorStateRegistryStorageProof The storage proof of the reference L2 root within the
     ///                                        `AnchorStateRegistry` on L1.
@@ -140,6 +143,7 @@ contract BridgedKeystore {
     /// @param l2BlockHash The block hash of the reference L2.
     function syncRoot(
         bytes memory blockHeaderRlp,
+        bytes memory l1BlockHashProof,
         bytes[] memory anchorStateRegistryAccountProof,
         bytes[] memory anchorStateRegistryStorageProof,
         bytes[] memory keystoreAccountProof,
@@ -147,13 +151,11 @@ contract BridgedKeystore {
         bytes32 l2MessagePasserStorageRoot,
         bytes32 l2BlockHash
     ) public {
-        // TODO: Using the execution root might make it hard to submit a valid proof.
-        //       Consider proving from the Beacon root instead.
-
         BlockHeader memory header = BlockLib.parseBlockHeader(blockHeaderRlp);
+        L1BlockHashProof memory hashProof = abi.decode(l1BlockHashProof, (L1BlockHashProof));
 
         // Ensure the provided block header is valid.
-        if (header.hash != IL1BlockOracle(l1BlockHashOracle).hash()) {
+        if (!L1ProofLib.verifyBlockHash(hashProof, header.hash)) {
             revert InvalidBlockHeader();
         }
 
