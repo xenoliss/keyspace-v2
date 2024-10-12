@@ -27,7 +27,7 @@ struct OPStackProofData {
 library L1ProofLib {
     address constant L1BLOCK_PREDEPLOY_ADDRESS = 0x4200000000000000000000000000000000000015;
     // cast storage 0x4200000000000000000000000000000000000015 --rpc-url https://sepolia.base.org --api-key $API_KEY
-    uint256 constant L1BLOCK_HASH_SLOT = 2;
+    bytes32 constant L1BLOCK_HASH_SLOT = bytes32(uint256(2));
 
     /**
      * @notice Proves the block hash based on the proof type.
@@ -72,7 +72,7 @@ library L1ProofLib {
 
         bytes32 l1BlockValue = StorageProofLib.verifyStorageProof(
             L1BLOCK_PREDEPLOY_ADDRESS,
-            keccak256(abi.encode(L1BLOCK_HASH_SLOT)),
+            L1BLOCK_HASH_SLOT,
             proofData.l1BlockAccountProof,
             proofData.l1BlockStorageProof,
             localHeader.stateRootHash

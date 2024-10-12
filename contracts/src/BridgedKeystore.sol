@@ -8,6 +8,7 @@ import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 import {L1ProofLib, L1BlockHashProof} from "./libs/L1ProofLib.sol";
+import {StorageProofLib} from "./libs/StorageProofLib.sol";
 
 
 contract BridgedKeystore {
@@ -159,38 +160,20 @@ contract BridgedKeystore {
             revert InvalidBlockHeader();
         }
 
-        // NOTE: MerkleTrie.get reverts if the slot does not exist.
+        bytes32 outputRoot = StorageProofLib.verifyStorageProof({
+            account: anchorStateRegistry,
+            slot: ANCHOR_STATE_REGISTRY_SLOT,
+            accountProof: anchorStateRegistryAccountProof,
+            slotProof: anchorStateRegistryStorageProof,
+            stateRoot: header.stateRootHash
+        });
 
-        // Add scope to avoid stack too deep error.
-        {
-            // From the L1 state root hash, recover the storage root of the AnchorStateRegistry.
-            bytes32 anchorStateRegistryHash = keccak256(abi.encodePacked(anchorStateRegistry));
-            bytes32 anchorStateRegistryStorageRoot = bytes32(
-                MerkleTrie.get({
-                    _key: abi.encodePacked(anchorStateRegistryHash),
-                    _proof: anchorStateRegistryAccountProof,
-                    _root: header.stateRootHash
-                }).toRlpItem().toList()[2].toUint()
-            );
-
-            // From the storage root of the AnchorStateRegistry, recover the l2 output root
-            // stored at slot ANCHOR_STATE_REGISTRY_SLOT.
-            bytes32 anchorStateRegistryOutputRootSlotHash = keccak256(abi.encodePacked(ANCHOR_STATE_REGISTRY_SLOT));
-            bytes32 outputRoot = bytes32(
-                MerkleTrie.get({
-                    _key: abi.encodePacked(anchorStateRegistryOutputRootSlotHash),
-                    _proof: anchorStateRegistryStorageProof,
-                    _root: anchorStateRegistryStorageRoot
-                }).toRlpItem().toUint()
-            );
-
-            // Ensure the provided preimages of the `outputRoot` are valid.
-            bytes32 version;
-            bytes32 recomputedOutputRoot =
-                keccak256(abi.encodePacked(version, l2StateRoot, l2MessagePasserStorageRoot, l2BlockHash));
-            if (recomputedOutputRoot != outputRoot) {
-                revert InvalidL2OutputRootPreimages();
-            }
+        // Ensure the provided preimages of the `outputRoot` are valid.
+        bytes32 version;
+        bytes32 recomputedOutputRoot =
+            keccak256(abi.encodePacked(version, l2StateRoot, l2MessagePasserStorageRoot, l2BlockHash));
+        if (recomputedOutputRoot != outputRoot) {
+            revert InvalidL2OutputRootPreimages();
         }
 
         // From the L2 state root, recover the Keystore storage root.

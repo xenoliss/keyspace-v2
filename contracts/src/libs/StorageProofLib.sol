@@ -16,7 +16,7 @@ library StorageProofLib {
      * and verifies the storage proof using Merkle Trie. It returns the value stored at the given slot.
      *
      * @param account The address of the account whose storage is being verified.
-     * @param slotHash The hash of the storage slot being verified.
+     * @param slot The storage slot being verified.
      * @param accountProof The Merkle proof for the account.
      * @param slotProof The Merkle proof for the storage slot.
      * @param stateRoot The root hash of the state trie.
@@ -24,7 +24,7 @@ library StorageProofLib {
      *
      * @notice The call will revert if any of the proofs fail.
      */         
-    function verifyStorageProof(address account, bytes32 slotHash, bytes[] memory accountProof, bytes[] memory slotProof, bytes32 stateRoot) internal pure returns (bytes32) {
+    function verifyStorageProof(address account, bytes32 slot, bytes[] memory accountProof, bytes[] memory slotProof, bytes32 stateRoot) internal pure returns (bytes32) {
         bytes32 accountHash = keccak256(abi.encodePacked(account));
         bytes32 storageRoot = bytes32(
             MerkleTrie.get({
@@ -34,6 +34,7 @@ library StorageProofLib {
             }).toRlpItem().toList()[2].toUint()
         );
 
+        bytes32 slotHash = keccak256(abi.encodePacked(slot));
         bytes32 slotValue = bytes32(
             MerkleTrie.get({
                 _key: abi.encodePacked(slotHash),
