@@ -1,5 +1,5 @@
 [package]
-name = "offchain"
+name = "bridged_keystore"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,4 @@ edition = "2021"
 alloy = { version = "0.4.2", features = ["full"] }
 alloy-consensus = "0.4.2"
 alloy-rlp = "0.3.8"
-bls12_381 = "0.8.0"
-group = "0.13.0"
 tokio = { version = "1.40.0", features = ["full"] }

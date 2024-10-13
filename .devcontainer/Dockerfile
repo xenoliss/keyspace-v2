@@ -1,13 +1,10 @@
-FROM mcr.microsoft.com/devcontainers/rust:1-1-bookworm
+FROM mcr.microsoft.com/devcontainers/go:1-1.22-bookworm
 
 USER vscode
 
 RUN sudo apt-get update
 
-RUN rustup default nightly && \
-	rustup component add clippy && \
-	rustup component add rustfmt
-
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs  | sh -s -- -y
 RUN curl -L https://foundry.paradigm.xyz | bash
 
 SHELL ["/bin/bash", "--login", "-i", "-c"]

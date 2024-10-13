@@ -3,21 +3,34 @@ pragma solidity ^0.8.27;
 
 import {Test, console} from "forge-std/Test.sol";
 
-import {KZGLib} from "../src/libs/KZGLib.sol";
+import {G1Point, G2Point, KZGLib} from "../src/libs/kzg/KZGLib.sol";
 
-contract KZGLiTest is Test {
+contract KZGLibTest is Test {
     function test_verify() public view {
-        bytes memory com =
-            hex"8e1ecc5eb459120eb3aa4cada6d437a323b35ceb935f60a8f9bd77e863456fbf9a11ce4ebe642f5cad93a4302aed723c";
+        G2Point memory tau = G2Point({
+            xs: [
+                0x116da8c89a0d090f3d8644ada33a5f1c8013ba7204aeca62d66d931b99afe6e7,
+                0x12740934ba9615b77b6a49b06fcce83ce90d67b1d0e2a530069e3a7306569a91
+            ],
+            ys: [
+                0x076441042e77b6309644b56251f059cf14befc72ac8a6157d30924e58dc4c172,
+                0x25222d9816e5f86b4a7dedd00d04acc5c979c18bd22b834ea8c6d07c0ba441db
+            ]
+        });
 
-        bytes memory proof =
-            hex"a6e228d5ce2459947e2656bb861c4ca67fe61d8856f32b9c903fbe404b792e26d06cdaa829ad37dd888e6f09e2e61203";
+        G1Point memory com = G1Point({
+            x: 0x1ffe64ab2a77b2d7c9c2a07585e328a2952aabd3b6a71b6ea73f1883cd9318ab,
+            y: 0x26d26e1556f3065f0a4212e2217e270237ca54abded1571db1e3872f7f61de1c
+        });
 
-        bytes32 z = 0x0000000000000000000000000000000000000000000000000000000000000003;
-        bytes32 y = 0x2d2a7e4fa6d4ec2d3b95b18fefcd550c87636779818142e2deef930193ae083a;
+        G1Point memory proof = G1Point({
+            x: 0x01033af6313a6b1d211473409857fe9e202cacd420c141f434b25ef02c8e9e94,
+            y: 0x2aaa17f74acf21170eef89274178b260508fcd4cece0eed17d0c3c580c01f7d4
+        });
 
-        (bool success, bytes memory res) = KZGLib.verify({com: com, proof: proof, z: z, y: y});
-        console.logBool(success);
-        console.logBytes(res);
+        uint256 z = 0x30644e72e131a029048b6e193fd841045cea24f6fd736bec231204708f703636;
+        uint256 y = 0x0000000000000000000000000000000000000000000000000000000000000002;
+
+        KZGLib.verify({z: z, y: y, com: com, proof: proof, tau: tau});
     }
 }

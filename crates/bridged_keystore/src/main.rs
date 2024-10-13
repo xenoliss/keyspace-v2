@@ -8,7 +8,11 @@ use std::str::FromStr;
 
 use crate::bindings::{AnchorStateRegistry, L1Block};
 
-pub async fn generate_test_input() {
+mod bindings;
+
+#[tokio::main]
+
+async fn main() {
     let base_sepolia_rpc_url = "https://sepolia.base.org".parse().unwrap();
     let base_sepolia_provider = ProviderBuilder::new().on_http(base_sepolia_rpc_url);
 
