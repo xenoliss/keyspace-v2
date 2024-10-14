@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
+import {MerklePatriciaProofVerifier} from "./MerklePatriciaProofVerifier.sol";
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 
 library StorageProofLib {
@@ -44,14 +45,19 @@ library StorageProofLib {
     /// @return The value stored at the specified storage slot.
     function verifySlotProof(bytes32 slot, bytes[] memory slotProof, bytes32 storageRoot) internal pure returns (bytes32) {
         bytes32 slotHash = keccak256(abi.encodePacked(slot));
-        bytes32 slotValue = bytes32(
-            MerkleTrie.get({
-                _key: abi.encodePacked(slotHash),
-                _proof: slotProof,
-                _root: storageRoot
-            }).toRlpItem().toUint()
-        );
+        RLPReader.RLPItem[] memory slotProofItems = new RLPReader.RLPItem[](slotProof.length);
+        for (uint256 i = 0; i < slotProof.length; i++) {
+            slotProofItems[i] = slotProof[i].toRlpItem();
+        }
+        RLPReader.RLPItem memory slotRlp = MerklePatriciaProofVerifier.extractProofValue(
+            storageRoot,
+            abi.encodePacked(slotHash),
+            slotProofItems
+        ).toRlpItem();
 
-        return slotValue;
+        if (slotRlp.len == 0) {
+            return bytes32(0);
+        }
+        return bytes32(slotRlp.toUint());
     }
 }

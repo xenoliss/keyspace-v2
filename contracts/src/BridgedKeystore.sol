@@ -153,19 +153,25 @@ contract BridgedKeystore {
             }
         }
 
-        bytes32 verifiedValueHash = proof.verify(id, recordProofRoot);
+        bytes32 confirmedValueHash = proof.verify(id, recordProofRoot);
 
-        // If our verified valueHash is on the current fork for this record, then we need to use the latest valueHash on the fork.
+        // If the storage slot for this keystore id is empty, then we use the id as the value hash.
+        if (confirmedValueHash == bytes32(0)) {
+            confirmedValueHash = id;
+        }
+
+        // If our confirmed valueHash is on the current fork for this record, then we need to use the latest valueHash on the fork.
+        // FIXME: This logic doesn't seem to match how we store forks at the moment. The confirmed value hash used to start a fork isn't stored anywhere.
         uint256 activeFork = activeForks[id];
         bytes32[] storage valueHashes = preconfirmedValueHashes[id][activeFork];
         for (uint256 i = 0; i < valueHashes.length; i++) {
-            if (valueHashes[i] == verifiedValueHash) {
-                verifiedValueHash = valueHashes[valueHashes.length - 1];
+            if (valueHashes[i] == confirmedValueHash) {
+                confirmedValueHash = valueHashes[valueHashes.length - 1];
                 break;
             }
         }
 
-        return verifiedValueHash == valueHash;
+        return confirmedValueHash == valueHash;
     }
 
     /// @notice Synchronizes the Keystore root from the reference L2.
