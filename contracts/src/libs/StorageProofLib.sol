@@ -4,7 +4,6 @@ pragma solidity ^0.8.27;
 import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 
-
 library StorageProofLib {
     using RLPReader for RLPReader.RLPItem;
     using RLPReader for bytes;
@@ -34,6 +33,16 @@ library StorageProofLib {
             }).toRlpItem().toList()[2].toUint()
         );
 
+        return verifySlotProof(slot, slotProof, storageRoot);
+    }
+
+    /// @dev Verifies the proof of a storage slot and returns the value stored at that slot.
+    ///
+    /// @param slot The storage slot to verify.
+    /// @param slotProof The Merkle proof for the storage slot.
+    /// @param storageRoot The root hash of the storage trie.
+    /// @return The value stored at the specified storage slot.
+    function verifySlotProof(bytes32 slot, bytes[] memory slotProof, bytes32 storageRoot) internal pure returns (bytes32) {
         bytes32 slotHash = keccak256(abi.encodePacked(slot));
         bytes32 slotValue = bytes32(
             MerkleTrie.get({
