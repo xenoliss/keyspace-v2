@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
-import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 
 import {BlockHeader, BlockLib} from "./BlockLib.sol";
 import {L1ProofLib, L1BlockHashProof} from "./L1ProofLib.sol";
@@ -126,11 +125,6 @@ library KeystoreProofLib {
     }
 
     function getKeystoreStorageRoot(KeystoreRootProof memory proof, address keystore) internal pure returns (bytes32) {
-        bytes32 keystoreHash = keccak256(abi.encodePacked(keystore));
-        return bytes32(
-            MerkleTrie.get({_key: abi.encodePacked(keystoreHash), _proof: proof.keystoreAccountProof, _root: proof.l2StateRoot})
-                .toRlpItem().toList()[2].toUint()
-        );
+        return bytes32(StorageProofLib.verifyAccountProof(keystore, proof.keystoreAccountProof, proof.l2StateRoot)[2].toUint());
     }
-
 }

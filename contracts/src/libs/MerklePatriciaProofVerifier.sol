@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * Copied from https://github.com/lorenzb/proveth/blob/c74b20e/onchain/ProvethVerifier.sol
- * with minor performance and code style-related modifications.
+ * MerklePatriciaProofVerifier Fork Ancestry
+ * - https://github.com/lidofinance/curve-merkle-oracle/blob/1033b3e/contracts/MerklePatriciaProofVerifier.sol
+ * - https://github.com/lorenzb/proveth/blob/c74b20e/onchain/ProvethVerifier.sol
  */
 pragma solidity ^0.8.27;
 

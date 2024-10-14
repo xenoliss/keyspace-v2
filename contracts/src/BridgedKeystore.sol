@@ -2,7 +2,6 @@
 pragma solidity ^0.8.27;
 
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
-import {MerkleTrie} from "optimism/libraries/trie/MerkleTrie.sol";
 
 import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
@@ -375,13 +374,10 @@ contract BridgedKeystore {
     {
         // From the reference L2 Keystore storage root, recover the user Keyspace record confirmed value hash.
         bytes32 keyspaceRecordSlot = keccak256(abi.encodePacked(id, bytes32(0)));
-        bytes32 keyspaceRecordSlotHash = keccak256(abi.encodePacked(keyspaceRecordSlot));
-        return bytes32(
-            MerkleTrie.get({
-                _key: abi.encodePacked(keyspaceRecordSlotHash),
-                _proof: confirmedValueHashInclusionProof,
-                _root: keystoreStorageRoot
-            }).toRlpItem().toUint()
-        );
+        return StorageProofLib.verifySlotProof({
+            slot: keyspaceRecordSlot,
+            slotProof: confirmedValueHashInclusionProof,
+            storageRoot: keystoreStorageRoot
+        });
     }
 }
