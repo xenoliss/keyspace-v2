@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 
-import {IBridgedKeystore} from "./interfaces/IBridgedKeystore.sol";
 import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
@@ -12,7 +11,7 @@ import {StorageProofLib} from "./libs/StorageProofLib.sol";
 import {KeystoreProofLib, KeystoreRecordProof, KeystoreRootProof} from "./libs/KeystoreProofLib.sol";
 
 
-contract BridgedKeystore is IBridgedKeystore {
+contract BridgedKeystore {
     using RLPReader for RLPReader.RLPItem;
     using RLPReader for bytes;
     using KeystoreProofLib for KeystoreRecordProof;
