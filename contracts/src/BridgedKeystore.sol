@@ -6,17 +6,11 @@ import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 import {IL1BlockOracle} from "./interfaces/IL1BlockOracle.sol";
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
-import {L1ProofLib, L1BlockHashProof} from "./libs/L1ProofLib.sol";
-import {StorageProofLib} from "./libs/StorageProofLib.sol";
 import {KeystoreProofLib, KeystoreRecordProof, KeystoreRootProof} from "./libs/KeystoreProofLib.sol";
-
+import {L1BlockHashProof, L1ProofLib} from "./libs/L1ProofLib.sol";
+import {StorageProofLib} from "./libs/StorageProofLib.sol";
 
 contract BridgedKeystore {
-    using RLPReader for RLPReader.RLPItem;
-    using RLPReader for bytes;
-    using KeystoreProofLib for KeystoreRecordProof;
-    using KeystoreProofLib for KeystoreRootProof;
-
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              EVENTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -29,14 +23,6 @@ contract BridgedKeystore {
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              ERRORS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
-    ///         block header does not match the L1 block hash returned by the `l1BlockHashOracle` contract.
-    error InvalidBlockHeader();
-
-    /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
-    ///         parameters do not match the recovered reference L2 OutputRoot.
-    error InvalidL2OutputRootPreimages();
 
     /// @notice Thrown when attempting to preconfirm a Keyspace record update (non-forking method), but the confirmed
     ///         ValueHash (recovered from the `keystoreStorageRoot`) was not found at the provided lookup index in the
@@ -63,12 +49,6 @@ contract BridgedKeystore {
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                           CONSTANTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-    /// @notice The slot where the reference L2 OutputRoot is stored on the `AnchorStateRegistry` L1 contract.
-    ///
-    /// @dev This is computed as keccak256(abi.encodePacked(bytes32(0), bytes32(uint256(1)))). This slot corresponds
-    ///      to calling `anchors(0)` on the `AnchorStateRegistry` contract.
-    bytes32 constant ANCHOR_STATE_REGISTRY_SLOT = 0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49;
 
     /// @notice The address of the `L1Block` contract on this L2.
     address public immutable l1BlockHashOracle;
@@ -110,41 +90,57 @@ contract BridgedKeystore {
         l1BlockHashOracle = l1BlockHashOracle_;
         anchorStateRegistry = anchorStateRegistry_;
         keystore = keystore_;
-        // FIXME: This allows a BridgedKeystore to be deployed uninitialized, which will allow old keystore states to be used on alt-L1s. We can require initialization and use the timestamp from the keystore proof's L1 block header to restrict the age of the keystoreStorageRoot.
+
+        // FIXME: This allows a BridgedKeystore to be deployed uninitialized, which will allow old keystore states to be
+        // used on alt-L1s. We can require initialization and use the timestamp from the keystore proof's L1 block
+        // header to restrict the age of the keystoreStorageRoot.
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                        PUBLIC FUNCTIONS                                        //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Checks if the provided value hash is current for the given record ID.
+    /// @notice Checks if the provided ValueHash is current for the given record ID.
     ///
-    /// @param id The identifier of the record.
-    /// @param valueHash The value hash of the record that is being checked.
-    /// @param recordProof The proof of the record in bytes format.
-    /// @return bool True if the value hash is current, false otherwise.
-    ///
-    /// @dev This function verifies the provided value hash against the current state proof of the record ID.
+    /// @dev This function verifies the provided ValueHash against the current state proof of the record ID.
     ///      It first checks if the proof is rooted at the stored keystoreStorageRoot or a more recent L1 block.
     ///      On L3 chains and L2s of alt-L1s, proofs against L1 blocks are prohibited, and the keystoreStorageRoot
     ///      must be synced with a deposit transaction.
     ///
     ///      If the proof contains a root proof, it verifies the root proof and ensures it is not older than the
-    ///      already synced on-chain state. The function then verifies the value hash against the record proof root.
+    ///      already synced on-chain state. The function then verifies the ValueHash against the record proof root.
     ///
-    ///      If the verified value hash is on the current fork for the record, the function uses the latest value hash
+    ///      If the verified ValueHash is on the current fork for the record, the function uses the latest ValueHash
     ///      on the fork.
-    function isValueCurrent(bytes32 id, bytes32 valueHash, bytes memory recordProof) public view returns (bool) {
-        bytes32 recordProofRoot = keystoreStorageRoot;
-        // TODO: Disallow proofs against L1 blocks on L3 chains and alt-L1 L2s.
-        bool isRootProofAllowed = true;
-        KeystoreRecordProof memory proof = abi.decode(recordProof, (KeystoreRecordProof));
-        if (proof.hasRootProof()) {
+    ///
+    /// @param id The identifier of the record.
+    /// @param valueHash The ValueHash of the record that is being checked.
+    /// @param keystoreRecordProof The proof of the record in bytes format.
+    ///
+    /// @return bool True if the ValueHash is current, false otherwise.
+    function isValueCurrent(bytes32 id, bytes32 valueHash, KeystoreRecordProof calldata keystoreRecordProof)
+        public
+        view
+        returns (bool)
+    {
+        // Defaults to the latest Keystore storage root known.
+        bytes32 keystoreStorageRoot_ = keystoreStorageRoot;
+
+        // Try to extract a more recent Keystore storage root if the KeystoreRecordProof embeds a KeystoreRootProof.
+        if (keystoreRecordProof.rootProof.length > 0) {
+            // TODO: Disallow proofs against L1 blocks on L3 chains and alt-L1 L2s.
+            bool isRootProofAllowed = true;
             if (!isRootProofAllowed) {
                 revert("Keystore root proofs are not allowed on this chain. Use deposit transactions instead.");
             }
+
             uint256 l1BlockNumber;
-            (recordProofRoot, l1BlockNumber) = proof.getRootProof().verify(keystore, anchorStateRegistry);
+            (keystoreStorageRoot_, l1BlockNumber) = KeystoreProofLib.extractKeystoreRoot({
+                anchorStateRegistry: anchorStateRegistry,
+                keystore: keystore,
+                proof: abi.decode(keystoreRecordProof.rootProof, (KeystoreRootProof))
+            });
+
             // TODO: Store the L1 block number with the keystoreStorageRoot so we can tell when a stateProof is too old.
             uint256 lastUpdatedAtBlock = 0;
             if (lastUpdatedAtBlock > l1BlockNumber) {
@@ -152,61 +148,48 @@ contract BridgedKeystore {
             }
         }
 
-        bytes32 confirmedValueHash = proof.verify(id, recordProofRoot);
+        // Extract the confirmed ValueHash from the KeystoreRecordProof.
+        bytes32 confirmedValueHash = KeystoreProofLib.extractKeystoreRecordValueHash({
+            keystoreStorageRoot: keystoreStorageRoot_,
+            id: id,
+            proof: keystoreRecordProof
+        });
 
-        // If the storage slot for this keystore id is empty, then we use the id as the value hash.
-        if (confirmedValueHash == bytes32(0)) {
-            confirmedValueHash = id;
+        // Use the Keystore id as the current ValueHash if the storage slot is empty.
+        bytes32 currentValueHash = confirmedValueHash;
+        if (currentValueHash == bytes32(0)) {
+            // TODO: Think about the fork state when this is the case?
+            currentValueHash = id;
         }
 
-        // If our confirmed valueHash is on the current fork for this record, then we need to use the latest valueHash on the fork.
-        // FIXME: This logic doesn't seem to match how we store forks at the moment. The confirmed value hash used to start a fork isn't stored anywhere.
         uint256 activeFork = activeForks[id];
         bytes32[] storage valueHashes = preconfirmedValueHashes[id][activeFork];
-        for (uint256 i = 0; i < valueHashes.length; i++) {
+
+        // Set the current ValueHash to be the latest preconfirmed ValueHash if the confirmed ValueHash is part of the
+        // current active fork for this record.
+        for (uint256 i; i < valueHashes.length; i++) {
             if (valueHashes[i] == confirmedValueHash) {
-                confirmedValueHash = valueHashes[valueHashes.length - 1];
+                currentValueHash = valueHashes[valueHashes.length - 1];
                 break;
             }
         }
 
-        return confirmedValueHash == valueHash;
+        return currentValueHash == valueHash;
     }
 
     /// @notice Synchronizes the Keystore root from the reference L2.
     ///
-    /// @param blockHeaderRlp The L1 block header, RLP-encoded.
-    /// @param l1BlockHashProof The proof of the L1 block hash.
-    /// @param anchorStateRegistryAccountProof The account proof of the `AnchorStateRegistry` contract on L1.
-    /// @param anchorStateRegistryStorageProof The storage proof of the reference L2 root within the
-    ///                                        `AnchorStateRegistry` on L1.
-    /// @param keystoreAccountProof The account proof of the Keystore contract on the reference L2.
-    /// @param l2StateRoot The state root of the reference L2.
-    /// @param l2MessagePasserStorageRoot The storage root of the `MessagePasser` contract on the reference L2.
-    /// @param l2BlockHash The block hash of the reference L2.
-    function syncRoot(
-        bytes memory blockHeaderRlp,
-        bytes memory l1BlockHashProof,
-        bytes[] memory anchorStateRegistryAccountProof,
-        bytes[] memory anchorStateRegistryStorageProof,
-        bytes[] memory keystoreAccountProof,
-        bytes32 l2StateRoot,
-        bytes32 l2MessagePasserStorageRoot,
-        bytes32 l2BlockHash
-    ) public {
-        uint256 lastUpdatedAtBlock;
-        (keystoreStorageRoot, lastUpdatedAtBlock) = KeystoreRootProof({
-            l1BlockHeader: blockHeaderRlp,
-            l1BlockHashProof: abi.decode(l1BlockHashProof, (L1BlockHashProof)),
-            anchorStateRegistryAccountProof: anchorStateRegistryAccountProof,
-            anchorStateRegistrySlotProof: anchorStateRegistryStorageProof,
-            keystoreAccountProof: keystoreAccountProof,
-            l2StateRoot: l2StateRoot,
-            l2MessagePasserStorageRoot: l2MessagePasserStorageRoot,
-            l2BlockHash: l2BlockHash
-        }).verify(keystore, anchorStateRegistry);
+    /// @param keystoreRootProof The KeystoreRootProof struct.
+    function syncKeystoreRoot(KeystoreRootProof calldata keystoreRootProof) public {
+        (bytes32 keystoreStorageRoot_,) = KeystoreProofLib.extractKeystoreRoot({
+            anchorStateRegistry: anchorStateRegistry,
+            keystore: keystore,
+            proof: keystoreRootProof
+        });
 
-        emit KeystoreRootSynchronized({keystoreStorageRoot: keystoreStorageRoot});
+        keystoreStorageRoot = keystoreStorageRoot_;
+
+        emit KeystoreRootSynchronized({keystoreStorageRoot: keystoreStorageRoot_});
     }
 
     /// @notice Preconfirms a new update to a Keyspace record.
@@ -246,8 +229,8 @@ contract BridgedKeystore {
         bytes32 currentValueHash = confirmedValueHash;
 
         // If the active fork is not empty, ensure that the `confirmedValueHash` is part of its history.
-        // If it is, the successive updates that have been applied on top of it are consiered valid and we peek
-        // the latest one as the current ValueHash.
+        // If it is, the successive updates that have been applied on top of it are considered valid
+        // and we peek the latest one as the current ValueHash.
         if (preconfirmedValueHashes_.length > 0) {
             bytes32 valueHash = preconfirmedValueHashes_[confirmedIndex];
             if (valueHash != confirmedValueHash) {
@@ -258,6 +241,11 @@ contract BridgedKeystore {
             }
 
             currentValueHash = preconfirmedValueHashes_[preconfirmedValueHashes_.length - 1];
+        }
+        // If the active fork is empty push the `confirmedValueHash` to ensure it's part of its history.
+        // NOTE: Only possible the very first time.
+        else {
+            preconfirmedValueHashes_.push(confirmedValueHash);
         }
 
         KeystoreLib.verifyNewValueHash({
@@ -372,12 +360,12 @@ contract BridgedKeystore {
         view
         returns (bytes32)
     {
-        // From the reference L2 Keystore storage root, recover the user Keyspace record confirmed value hash.
         bytes32 keyspaceRecordSlot = keccak256(abi.encodePacked(id, bytes32(0)));
-        return StorageProofLib.verifySlotProof({
+
+        return StorageProofLib.extractSlotValue({
+            storageRoot: keystoreStorageRoot,
             slot: keyspaceRecordSlot,
-            slotProof: confirmedValueHashInclusionProof,
-            storageRoot: keystoreStorageRoot
+            storageProof: confirmedValueHashInclusionProof
         });
     }
 }

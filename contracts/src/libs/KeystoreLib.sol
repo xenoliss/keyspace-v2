@@ -84,11 +84,12 @@ library KeystoreLib {
     /// @param valueHash The Keyspace record value hash.
     /// @param valueHashPreimages The value hash preimages.
     function verifyRecordPreimages(bytes32 valueHash, ValueHashPreimages calldata valueHashPreimages) internal pure {
-        // Recompute the Keyspace record value hash from the provided preimages and ensure it maches with the given
-        // `valueHash` parameter.
+        // Recompute the Keyspace record value hash from the provided preimages.
         bytes32 valueHashFromPreimages = keccak256(
             abi.encodePacked(valueHashPreimages.controller, valueHashPreimages.nonce, valueHashPreimages.storageHash)
         );
+
+        // Ensure the recomputed ValueHash matches witht the given valueHash` parameter.
         if (valueHashFromPreimages != valueHash) {
             revert RecordValueMismatch({valueHash: valueHash, valueHashFromPreimages: valueHashFromPreimages});
         }
