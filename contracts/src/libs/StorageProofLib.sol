@@ -13,15 +13,15 @@ library StorageProofLib {
     //                                        INTERNAL FUNCTIONS                                      //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Extracts the storage value from the given account and slot proofs.
+    /// @notice Extracts the storage value from the given account and storage proofs.
     ///
     /// @dev Reverts if any of the proofs is invalid.
     ///
-    /// @param stateRoot The root hash of the state trie.
+    /// @param stateRoot The root of the state trie.
     /// @param account The address of the account whose storage is being read.
-    /// @param accountProof The Merkle proof for the account.
+    /// @param accountProof The account proof.
     /// @param slot The storage slot being read.
-    /// @param storageProof The Merkle proof for the storage slot.
+    /// @param storageProof The storage proof.
     ///
     /// @return The value stored at the given slot.
     function extractAccountStorageValue(
@@ -41,9 +41,9 @@ library StorageProofLib {
     ///
     /// @dev Reverts if the account proof is invalid.
     ///
-    /// @param stateRoot The root hash of the state trie.
+    /// @param stateRoot The root of the state trie.
     /// @param account The address of the account.
-    /// @param accountProof The Merkle Patricia proof for the account.
+    /// @param accountProof The account proof.
     ///
     /// @return The account storage root.
     function extractAccountStorageRoot(bytes32 stateRoot, address account, bytes[] memory accountProof)
@@ -66,9 +66,9 @@ library StorageProofLib {
     ///
     /// @dev Reverts if the account proof is invalid.
     ///
-    /// @param storageRoot The root hash of the storage trie.
+    /// @param storageRoot The root of the storage trie.
     /// @param slot The storage slot being read.
-    /// @param storageProof The Merkle proof for the storage slot.
+    /// @param storageProof The storage proof.
     ///
     /// @return The value stored at the specified slot.
     function extractSlotValue(bytes32 storageRoot, bytes32 slot, bytes[] memory storageProof)
