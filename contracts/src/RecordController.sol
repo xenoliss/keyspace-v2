@@ -4,11 +4,11 @@ pragma solidity ^0.8.27;
 import {BlockHeader, BlockLib} from "./libs/BlockLib.sol";
 
 abstract contract RecordController {
-    /// @notice Authorizes (or not) a Keyspace record update.
+    /// @notice Authorizes (or not) a Keystore record update.
     ///
-    /// @param id The ID of the Keyspace record being updated.
-    /// @param currentValueHash The Keyspace record current value hash.
-    /// @param newValueHash The Keyspace record new value hash.
+    /// @param id The identifier of the Keystore record being updated.
+    /// @param currentValueHash The Keystore record current value hash.
+    /// @param newValueHash The Keystore record new value hash.
     // /// @param l1BlockHash The L1 block hash used for proving L1 state.
     /// @param proof A proof authorizing the update.
     ///
@@ -34,11 +34,11 @@ abstract contract RecordController {
         });
     }
 
-    /// @notice Authorizes (or not) a Keyspace record update.
+    /// @notice Authorizes (or not) a Keystore record update.
     ///
-    /// @param id The ID of the Keyspace record being updated.
-    /// @param currentValueHash The Keyspace record current value hash.
-    /// @param newValueHash The Keyspace record new value hash.
+    /// @param id The identifier of the Keystore record being updated.
+    /// @param currentValueHash The Keystore record current value hash.
+    /// @param newValueHash The Keystore record new value hash.
     /// @param blockHeader The L1 block header used for proving L1 state.
     /// @param proof A proof authorizing the update.
     ///

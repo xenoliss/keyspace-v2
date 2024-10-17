@@ -1,72 +1,111 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.27;
 
-import {MerklePatriciaProofVerifier} from "./MerklePatriciaProofVerifier.sol";
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
+
+import {MerklePatriciaProofVerifier} from "./MerklePatriciaProofVerifier.sol";
 
 library StorageProofLib {
     using RLPReader for RLPReader.RLPItem;
     using RLPReader for bytes;
 
-    /// @dev Verifies the storage proof for a given account and slot.
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                        INTERNAL FUNCTIONS                                      //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Extracts the storage value from the given account and storage proofs.
     ///
-    /// This function takes an account address, a slot hash, account proof, slot proof, and state root,
-    /// and verifies the storage proof using Merkle Trie. It returns the value stored at the given slot.
+    /// @dev Reverts if any of the proofs is invalid.
     ///
-    /// @param account The address of the account whose storage is being verified.
-    /// @param slot The storage slot being verified.
-    /// @param accountProof The Merkle proof for the account.
-    /// @param slotProof The Merkle proof for the storage slot.
-    /// @param stateRoot The root hash of the state trie.
+    /// @param stateRoot The root of the state trie.
+    /// @param account The address of the account whose storage is being read.
+    /// @param accountProof The account proof.
+    /// @param slot The storage slot being read.
+    /// @param storageProof The storage proof.
+    ///
     /// @return The value stored at the given slot.
-    ///
-    /// @notice The call will revert if any of the proofs fail.
-    function verifyStorageProof(address account, bytes32 slot, bytes[] memory accountProof, bytes[] memory slotProof, bytes32 stateRoot) internal pure returns (bytes32) {
-        RLPReader.RLPItem[] memory accountRecord = verifyAccountProof(account, accountProof, stateRoot);
-        bytes32 storageRoot = bytes32(accountRecord[2].toUint());
-        return verifySlotProof(slot, slotProof, storageRoot);
+    function extractAccountStorageValue(
+        bytes32 stateRoot,
+        address account,
+        bytes[] memory accountProof,
+        bytes32 slot,
+        bytes[] memory storageProof
+    ) internal pure returns (bytes32) {
+        bytes32 storageRoot =
+            extractAccountStorageRoot({stateRoot: stateRoot, account: account, accountProof: accountProof});
+
+        return extractSlotValue({storageRoot: storageRoot, slot: slot, storageProof: storageProof});
     }
 
-    /// @dev Verifies the Merkle Patricia proof for an Ethereum account.
+    /// @notice Extracts the account storage root from the given account proof.
     ///
-    /// @param account The address of the account to verify.
-    /// @param accountProof The Merkle Patricia proof for the account.
-    /// @param stateRoot The root hash of the state trie.
-    /// @return An array of RLP items representing the account data.
-    function verifyAccountProof(address account, bytes[] memory accountProof, bytes32 stateRoot) internal pure returns (RLPReader.RLPItem[] memory) {
+    /// @dev Reverts if the account proof is invalid.
+    ///
+    /// @param stateRoot The root of the state trie.
+    /// @param account The address of the account.
+    /// @param accountProof The account proof.
+    ///
+    /// @return The account storage root.
+    function extractAccountStorageRoot(bytes32 stateRoot, address account, bytes[] memory accountProof)
+        internal
+        pure
+        returns (bytes32)
+    {
         bytes32 accountHash = keccak256(abi.encodePacked(account));
-        return MerklePatriciaProofVerifier.extractProofValue({
-            rootHash: stateRoot,
-            path: abi.encodePacked(accountHash),
-            stack: _convertProofItems(accountProof)
-        }).toRlpItem().toList();
+
+        return bytes32(
+            MerklePatriciaProofVerifier.extractProofValue({
+                rootHash: stateRoot,
+                path: abi.encodePacked(accountHash),
+                stack: _parseRLPItems(accountProof)
+            }).toRlpItem().toList()[2].toUint()
+        );
     }
 
-    /// @dev Verifies the proof of a storage slot and returns the value stored at that slot.
+    /// @notice Extracts the slot value from the given storage proof.
     ///
-    /// @param slot The storage slot to verify.
-    /// @param slotProof The Merkle proof for the storage slot.
-    /// @param storageRoot The root hash of the storage trie.
-    /// @return The value stored at the specified storage slot.
-    function verifySlotProof(bytes32 slot, bytes[] memory slotProof, bytes32 storageRoot) internal pure returns (bytes32) {
+    /// @dev Reverts if the account proof is invalid.
+    ///
+    /// @param storageRoot The root of the storage trie.
+    /// @param slot The storage slot being read.
+    /// @param storageProof The storage proof.
+    ///
+    /// @return The value stored at the specified slot.
+    function extractSlotValue(bytes32 storageRoot, bytes32 slot, bytes[] memory storageProof)
+        internal
+        pure
+        returns (bytes32)
+    {
         bytes32 slotHash = keccak256(abi.encodePacked(slot));
+
         RLPReader.RLPItem memory slotRlp = MerklePatriciaProofVerifier.extractProofValue({
             rootHash: storageRoot,
             path: abi.encodePacked(slotHash),
-            stack: _convertProofItems(slotProof)
+            stack: _parseRLPItems(storageProof)
         }).toRlpItem();
 
         if (slotRlp.len == 0) {
             return bytes32(0);
         }
+
         return bytes32(slotRlp.toUint());
     }
 
-    function _convertProofItems(bytes[] memory proof) internal pure returns (RLPReader.RLPItem[] memory) {
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                        PRIVATE FUNCTIONS                                       //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Parses RLP items from the given proof bytes.
+    ///
+    /// @param proof The proof bytes.
+    ///
+    /// @return The parsed RLP items.
+    function _parseRLPItems(bytes[] memory proof) private pure returns (RLPReader.RLPItem[] memory) {
         RLPReader.RLPItem[] memory proofItems = new RLPReader.RLPItem[](proof.length);
-        for (uint256 i = 0; i < proof.length; i++) {
+        for (uint256 i; i < proof.length; i++) {
             proofItems[i] = proof[i].toRlpItem();
         }
+
         return proofItems;
     }
 }

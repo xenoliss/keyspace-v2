@@ -4,8 +4,9 @@ pragma solidity ^0.8.27;
 import {Test, console} from "forge-std/Test.sol";
 
 import {BridgedKeystore} from "../src/BridgedKeystore.sol";
-import {OPStackProofData, L1BlockHashProof, L1ProofType} from "../src/libs/L1ProofLib.sol";
-import {KeystoreRecordProof, KeystoreRootProof} from "../src/libs/KeystoreProofLib.sol";
+
+import {KeystoreStorageRootProof} from "../src/libs/KeystoreProofLib.sol";
+import {L1BlockHashProof, L1ProofType, OPStackProofData} from "../src/libs/L1ProofLib.sol";
 
 struct StorageProofItem {
     bytes32 key;
@@ -24,7 +25,7 @@ struct Proof {
 }
 
 contract BridgedKeystoreTest is Test {
-    function test_syncRoot_ForkBaseSepolia() public {
+    function test_syncKeystoreStorageRoot_ForkBaseSepolia() public {
         // Generate the proof for the AnchorStateRegistry state on the L1.
         // NOTE: The proof must be generated for the L1 block number that is currently available on the L2.
         // cast proof 0x4C8BA32A5DAC2A720bb35CeDB51D6B067D104205  0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49
@@ -78,21 +79,22 @@ contract BridgedKeystoreTest is Test {
             l1BlockAccountProof: l1BlockHashProof.accountProof,
             l1BlockStorageProof: l1BlockHashProof.storageProof[0].proof
         });
-        bytes memory l1BlockHashProofBytes = abi.encode(L1BlockHashProof({
-            proofType: L1ProofType.OPStack,
-            proofData: abi.encode(l1BlockHashProofData)
-        }));
 
-        sut.syncRoot({
-            blockHeaderRlp: blockHeaderRlp,
-            l1BlockHashProof: l1BlockHashProofBytes,
-            anchorStateRegistryAccountProof: anchorStateRegistryAccountProof,
-            anchorStateRegistryStorageProof: anchorStateRegistryStorageProof,
-            keystoreAccountProof: keystoreAccountProof,
-            l2StateRoot: 0xc371603ef835569a2be8200f88a1484f274a207d7ff9e9c8e8e22c66b3da6338,
-            l2MessagePasserStorageRoot: 0xcad265862b914488fe259095b992220f8c6185f12f9d99519c19322782c496ef,
-            l2BlockHash: 0x9109f32441d997ce6948c285664e1e7ac7a229a1f538ff262e03652cce752bb8
-        });
+        sut.syncKeystoreStorageRoot(
+            KeystoreStorageRootProof({
+                l1BlockHeaderRlp: blockHeaderRlp,
+                l1BlockHashProof: L1BlockHashProof({
+                    proofType: L1ProofType.OPStack,
+                    proofData: abi.encode(l1BlockHashProofData)
+                }),
+                anchorStateRegistryAccountProof: anchorStateRegistryAccountProof,
+                anchorStateRegistryStorageProof: anchorStateRegistryStorageProof,
+                keystoreAccountProof: keystoreAccountProof,
+                l2StateRoot: 0xc371603ef835569a2be8200f88a1484f274a207d7ff9e9c8e8e22c66b3da6338,
+                l2MessagePasserStorageRoot: 0xcad265862b914488fe259095b992220f8c6185f12f9d99519c19322782c496ef,
+                l2BlockHash: 0x9109f32441d997ce6948c285664e1e7ac7a229a1f538ff262e03652cce752bb8
+            })
+        );
     }
 
     function test_isValueCurrent_ForkBaseSepolia() public {
@@ -110,7 +112,8 @@ contract BridgedKeystoreTest is Test {
         // Generate the proof for the Keystore storage slot for Keyspace ID 1 on the L2.
         // NOTE: The proof must be generated for the L2 block number that was commited in the AnchorStateRegistry
         // output.
-        // cast proof 0x610A7e97C6D2F1E09e6390F013BFCc39B8EE49e2 0xada5013122d395ba3c54772283fb069b10426056ef8ca54750cb9bb552a59e7d 
+        // cast proof 0x610A7e97C6D2F1E09e6390F013BFCc39B8EE49e2
+        // 0xada5013122d395ba3c54772283fb069b10426056ef8ca54750cb9bb552a59e7d
         // --rpc-url https://sepolia.base.org --block 15702959 > test/res/proof_keystore_id_1.json
 
         // Generate the proof for L1Block.hash on the L2.
@@ -124,10 +127,6 @@ contract BridgedKeystoreTest is Test {
         json = vm.readFile("./test/res/proof_keystore_state.json");
         data = vm.parseJson(json);
         Proof memory keystoreProof = abi.decode(data, (Proof));
-
-        json = vm.readFile("./test/res/proof_keystore_id_1.json");
-        data = vm.parseJson(json);
-        Proof memory keystoreRecordProof = abi.decode(data, (Proof));
 
         json = vm.readFile("./test/res/proof_l1block_state.json");
         data = vm.parseJson(json);
@@ -159,26 +158,33 @@ contract BridgedKeystoreTest is Test {
             l1BlockAccountProof: l1BlockHashProof.accountProof,
             l1BlockStorageProof: l1BlockHashProof.storageProof[0].proof
         });
-        L1BlockHashProof memory l1BlockHashProofStruct = L1BlockHashProof({
-            proofType: L1ProofType.OPStack,
-            proofData: abi.encode(l1BlockHashProofData)
-        });
+        L1BlockHashProof memory l1BlockHashProofStruct =
+            L1BlockHashProof({proofType: L1ProofType.OPStack, proofData: abi.encode(l1BlockHashProofData)});
 
         bytes32 keyspaceID = bytes32(uint256(1));
-        KeystoreRecordProof memory proof = KeystoreRecordProof({
-            rootProof: abi.encode(KeystoreRootProof({
-                l1BlockHeader: blockHeaderRlp,
-                l1BlockHashProof: l1BlockHashProofStruct,
-                anchorStateRegistryAccountProof: anchorStateRegistryAccountProof,
-                anchorStateRegistrySlotProof: anchorStateRegistryStorageProof,
-                keystoreAccountProof: keystoreAccountProof,
-                l2StateRoot: 0xc371603ef835569a2be8200f88a1484f274a207d7ff9e9c8e8e22c66b3da6338,
-                l2MessagePasserStorageRoot: 0xcad265862b914488fe259095b992220f8c6185f12f9d99519c19322782c496ef,
-                l2BlockHash: 0x9109f32441d997ce6948c285664e1e7ac7a229a1f538ff262e03652cce752bb8
-            })),
-            slotProof: keystoreRecordProof.storageProof[0].proof
-        });
 
-        assertTrue(sut.isValueCurrent(keyspaceID, keyspaceID, abi.encode(proof)));
+        json = vm.readFile("./test/res/proof_keystore_id_1.json");
+        data = vm.parseJson(json);
+        Proof memory keystoreRecordProof = abi.decode(data, (Proof));
+
+        assertTrue(
+            sut.isValueCurrent({
+                id: keyspaceID,
+                valueHash: keyspaceID,
+                keystoreStorageRootProof: abi.encode(
+                    KeystoreStorageRootProof({
+                        l1BlockHeaderRlp: blockHeaderRlp,
+                        l1BlockHashProof: l1BlockHashProofStruct,
+                        anchorStateRegistryAccountProof: anchorStateRegistryAccountProof,
+                        anchorStateRegistryStorageProof: anchorStateRegistryStorageProof,
+                        keystoreAccountProof: keystoreAccountProof,
+                        l2StateRoot: 0xc371603ef835569a2be8200f88a1484f274a207d7ff9e9c8e8e22c66b3da6338,
+                        l2MessagePasserStorageRoot: 0xcad265862b914488fe259095b992220f8c6185f12f9d99519c19322782c496ef,
+                        l2BlockHash: 0x9109f32441d997ce6948c285664e1e7ac7a229a1f538ff262e03652cce752bb8
+                    })
+                ),
+                storageProof: keystoreRecordProof.storageProof[0].proof
+            })
+        );
     }
 }

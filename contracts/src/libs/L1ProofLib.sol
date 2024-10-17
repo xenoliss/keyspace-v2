@@ -26,57 +26,58 @@ struct OPStackProofData {
 
 library L1ProofLib {
     address constant L1BLOCK_PREDEPLOY_ADDRESS = 0x4200000000000000000000000000000000000015;
+
     // cast storage 0x4200000000000000000000000000000000000015 --rpc-url https://sepolia.base.org --api-key $API_KEY
     bytes32 constant L1BLOCK_HASH_SLOT = bytes32(uint256(2));
 
-    /**
-     * @notice Proves the block hash based on the proof type.
-     * @param proof The L1 block proof data.
-     * @param expectedBlockHash The expected block hash to verify against.
-     */
-    function verifyBlockHash(
-        L1BlockHashProof memory proof,
-        bytes32 expectedBlockHash
-    ) internal view returns (bool) {
+    // TODO: Improve return description.
+    /// @notice Proves the block hash based on the proof type.
+    ///
+    /// @param proof The L1 block proof data.
+    /// @param expectedBlockHash The expected block hash to verify against.
+    ///
+    /// @return True or false.
+    function verifyBlockHash(L1BlockHashProof memory proof, bytes32 expectedBlockHash) internal view returns (bool) {
         if (proof.proofType == L1ProofType.Hashi) {
             revert("ProofLib: NOT_IMPLEMENTED_YET");
-        } else if (proof.proofType == L1ProofType.OPStack) {
-            // Decode OPStack proof data
-            OPStackProofData memory opStackProof = abi.decode(proof.proofData, (OPStackProofData));
-            // Verify OPStack proof
-            return _verifyBlockHashOPStack(opStackProof, expectedBlockHash);
-        } else {
-            revert("ProofLib: INVALID_PROOF_TYPE");
         }
+
+        if (proof.proofType == L1ProofType.OPStack) {
+            // Decode OPStack proof data.
+            OPStackProofData memory opStackProof = abi.decode(proof.proofData, (OPStackProofData));
+
+            // Verify OPStack proof.
+            return _verifyBlockHashOPStack(opStackProof, expectedBlockHash);
+        }
+
+        revert("ProofLib: INVALID_PROOF_TYPE");
     }
 
-    /**
-     * @notice Internal function to verify OPStack block hashes within the 256-block limit.
-     * @param proofData The OPStack proof data.
-     * @param expectedBlockHash The expected block hash to verify against.
-     */
-    function _verifyBlockHashOPStack(
-        OPStackProofData memory proofData,
-        bytes32 expectedBlockHash
-    ) internal view returns (bool) {
+    // TODO: Improve return description.
+    /// @notice Verifies OPStack block hashes within the 256-block limit.
+    ///
+    /// @param proofData The OPStack proof data.
+    /// @param expectedBlockHash The expected block hash to verify against.
+    ///
+    /// @return True or false.
+    function _verifyBlockHashOPStack(OPStackProofData memory proofData, bytes32 expectedBlockHash)
+        private
+        view
+        returns (bool)
+    {
         BlockHeader memory localHeader = BlockLib.parseBlockHeader(proofData.localBlockHeader);
         bytes32 localBlockHash = blockhash(localHeader.number);
-        require(
-            localBlockHash != bytes32(0),
-            "ProofLib: BLOCKHASH_NOT_AVAILABLE (OPStack)"
-        );
-        require(
-            localBlockHash == localHeader.hash,
-            "ProofLib: INVALID_BLOCK_HASH (OPStack)"
-        );
+        require(localBlockHash != bytes32(0), "ProofLib: BLOCKHASH_NOT_AVAILABLE (OPStack)");
+        require(localBlockHash == localHeader.hash, "ProofLib: INVALID_BLOCK_HASH (OPStack)");
 
-        bytes32 l1BlockValue = StorageProofLib.verifyStorageProof(
-            L1BLOCK_PREDEPLOY_ADDRESS,
-            L1BLOCK_HASH_SLOT,
-            proofData.l1BlockAccountProof,
-            proofData.l1BlockStorageProof,
-            localHeader.stateRootHash
-        );
+        bytes32 l1BlockValue = StorageProofLib.extractAccountStorageValue({
+            stateRoot: localHeader.stateRootHash,
+            account: L1BLOCK_PREDEPLOY_ADDRESS,
+            accountProof: proofData.l1BlockAccountProof,
+            slot: L1BLOCK_HASH_SLOT,
+            storageProof: proofData.l1BlockStorageProof
+        });
+
         return l1BlockValue == expectedBlockHash;
     }
 }

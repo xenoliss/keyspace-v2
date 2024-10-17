@@ -4,15 +4,15 @@ pragma solidity ^0.8.27;
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 
 contract Keystore {
-    /// @notice The Keyspace records.
+    /// @notice The Keystore records.
     mapping(bytes32 id => bytes32 valueHash) public records;
 
-    /// @notice Updates a Keyspace record to a new `newValueHash`.
+    /// @notice Updates a Keystore record to a new `newValueHash`.
     ///
-    /// @param id The ID of the Keyspace record to update.
-    /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keyspace record.
-    /// @param newValueHash The new ValueHash to store in the Keyspace record.
-    /// @param controllerProof A proof provided to the Keyspace record `controller` to authorize the update.
+    /// @param id The identifier of the Keystore record to update.
+    /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keystore record.
+    /// @param newValueHash The new ValueHash to store in the Keystore record.
+    /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function set(
         bytes32 id,
         ValueHashPreimages calldata currentValueHashPreimages,
