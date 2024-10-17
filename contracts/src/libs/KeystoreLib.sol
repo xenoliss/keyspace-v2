@@ -41,7 +41,7 @@ library KeystoreLib {
     ///
     /// @dev Reverts if the authorization fails.
     ///
-    /// @param id The ID of the Keystore record being updated.
+    /// @param id The identifiee of the Keystore record being updated.
     /// @param currentValueHash The current ValueHash of the Keystore record.
     /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keystore record.
     /// @param newValueHash The new ValueHash to be stored in the Keystore record.

@@ -45,9 +45,6 @@ contract BridgedKeystore {
     //                                           CONSTANTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice The address of the `L1Block` contract on this L2.
-    address public immutable l1BlockHashOracle;
-
     /// @notice The address of the `AnchorStateRegistry` contract on L1.
     address public immutable anchorStateRegistry;
 
@@ -78,11 +75,9 @@ contract BridgedKeystore {
 
     /// @notice Deploys a `BridgedKeystore` contract.
     ///
-    /// @param l1BlockHashOracle_ The address of the `L1Block` oracle contract on this chain.
     /// @param anchorStateRegistry_ The address of the `AnchorStateRegistry` contract on L1.
     /// @param keystore_ The address of the `Keystore` contract on the reference L2.
-    constructor(address l1BlockHashOracle_, address anchorStateRegistry_, address keystore_) {
-        l1BlockHashOracle = l1BlockHashOracle_;
+    constructor(address anchorStateRegistry_, address keystore_) {
         anchorStateRegistry = anchorStateRegistry_;
         keystore = keystore_;
 
@@ -157,7 +152,6 @@ contract BridgedKeystore {
         // Use the Keystore id as the current ValueHash if the storage slot is empty.
         bytes32 currentValueHash = confirmedValueHash;
         if (currentValueHash == bytes32(0)) {
-            // TODO: Think about the fork state when this is the case?
             currentValueHash = id;
         }
 

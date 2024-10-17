@@ -57,7 +57,6 @@ contract BridgedKeystoreTest is Test {
         vm.createSelectFork("https://sepolia.base.org", 15856045);
 
         BridgedKeystore sut = new BridgedKeystore({
-            l1BlockHashOracle_: 0x4200000000000000000000000000000000000015,
             anchorStateRegistry_: 0x4C8BA32A5DAC2A720bb35CeDB51D6B067D104205,
             keystore_: 0x610A7e97C6D2F1E09e6390F013BFCc39B8EE49e2
         });
@@ -136,7 +135,6 @@ contract BridgedKeystoreTest is Test {
         vm.createSelectFork("https://sepolia.base.org", 15856045);
 
         BridgedKeystore sut = new BridgedKeystore({
-            l1BlockHashOracle_: 0x4200000000000000000000000000000000000015,
             anchorStateRegistry_: 0x4C8BA32A5DAC2A720bb35CeDB51D6B067D104205,
             keystore_: 0x610A7e97C6D2F1E09e6390F013BFCc39B8EE49e2
         });

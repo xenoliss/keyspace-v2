@@ -107,16 +107,16 @@ library KeystoreProofLib {
     ) internal view returns (bytes32, uint256) {
         BlockHeader memory header = BlockLib.parseBlockHeader(keystoreStorageRootProof.l1BlockHeaderRlp);
 
-        // Ensure the provided block header is valid.
+        // Ensure the provided L1 block header can be used (i.e the block hash is valid).
         require(
-            L1ProofLib.verifyBlockHash({
+            L1ProofLib.verifyL1BlockHash({
                 proof: keystoreStorageRootProof.l1BlockHashProof,
-                expectedBlockHash: header.hash
+                expectedL1BlockHash: header.hash
             }),
             InvalidBlockHeader()
         );
 
-        // Get the Output root that was submitted to the AnchorStateRegistry contract on L1.
+        // Get the OutputRoot that was submitted to the AnchorStateRegistry contract on L1.
         bytes32 outputRoot = StorageProofLib.extractAccountStorageValue({
             stateRoot: header.stateRootHash,
             account: anchorStateRegistry,
