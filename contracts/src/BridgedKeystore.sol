@@ -15,21 +15,19 @@ contract BridgedKeystore {
     /// @param keystoreStorageRoot The new synchronized Keystore storage root.
     event KeystoreRootSynchronized(bytes32 keystoreStorageRoot);
 
+    /// @notice Emitted when a Keystore record update is preconfirmed.
+    ///
+    /// @param id The Keystore identifier of the updated record.
+    /// @param newValueHash The new ValueHash stored in the record.
+    event KeystoreRecordUpdatePreconfirmed(bytes32 id, bytes32 newValueHash);
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              ERRORS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Thrown when attempting to preconfirm a Keystore record update (non-forking method), but the confirmed
-    ///         ValueHash (recovered from the `keystoreStorageRoot`) was not found at the provided lookup index in the
-    ///         active fork history of the Keystore record.
-    ///
-    /// @param confirmedValueHash The confirmed ValueHash recovered from the `keystoreStorageRoot`.
-    /// @param preconfirmedValueHash The preconfirmed ValueHash found at the provided lookup index.
-    error InvalidPreconfirmedValueHash(bytes32 confirmedValueHash, bytes32 preconfirmedValueHash);
-
     /// @notice Thrown when attempting to preconfirm a Keystore record update (forking method), but the confirmed
     ///         ValueHash (recovered from the `keystoreStorageRoot`) and the ValueHash at the given lookup index in the
-    ///         active fork history are the same.
+    ///         active fork are the same.
     ///
     /// @param valueHash The common ValueHash.
     error NoValueHashConflict(bytes32 valueHash);
@@ -61,9 +59,9 @@ contract BridgedKeystore {
     /// @notice The active fork for each Keystore identifier.
     ///
     /// @dev Preconfirmations are organized into "forks," which are sequences of successive ValueHashes set for a
-    ///      given Keystore record. A new fork is created if a conflict arises between the active fork's history
-    ///      and the confirmed ValueHash (recovered from the L2 Keystore storage root). The active fork for any
-    ///      Keystore record is always the most recent one created.
+    ///      given Keystore record. A new fork is created if a conflict arises between the active fork and the confirmed
+    ///      ValueHash (recovered from the L2 Keystore storage root). The active fork for any Keystore record is always
+    ///      the most recent one created.
     mapping(bytes32 id => uint256 activeFork) public activeForks;
 
     /// @notice Preconfirmed Keystore records for each fork.
@@ -107,14 +105,15 @@ contract BridgedKeystore {
     /// @param id The identifier of the Keystore record.
     /// @param valueHash The ValueHash of the Keystore record that is being checked.
     /// @param keystoreStorageRootProof OPTIONAL: A Keystore account proof, proving a more recent Keystore root.
-    /// @param storageProof The storage proof from which to extract the Keystore record ValueHash.
+    /// @param confirmedValueHashStorageProof The storage proof from which to extract the confirmed ValueHash of the
+    ///                                       Keystore record.
     ///
     /// @return bool True if the ValueHash is current, false otherwise.
-    function isValueCurrent(
+    function isValueHashCurrent(
         bytes32 id,
         bytes32 valueHash,
         bytes calldata keystoreStorageRootProof,
-        bytes[] calldata storageProof
+        bytes[] calldata confirmedValueHashStorageProof
     ) external view returns (bool) {
         // Defaults to the latest Keystore storage root known.
         bytes32 keystoreStorageRoot_ = keystoreStorageRoot;
@@ -142,38 +141,21 @@ contract BridgedKeystore {
             }
         }
 
-        // Extract the confirmed ValueHash from the storage proof.
-        bytes32 confirmedValueHash = KeystoreProofLib.extractKeystoreRecordValueHash({
-            keystoreStorageRoot: keystoreStorageRoot_,
+        // Get the current ValueHash to use.
+        (,, bytes32 currentValueHash) = _recordValueHashes({
             id: id,
-            storageProof: storageProof
+            keystoreStorageRoot_: keystoreStorageRoot_,
+            confirmedValueHashStorageProof: confirmedValueHashStorageProof
         });
 
-        // Use the Keystore id as the current ValueHash if the storage slot is empty.
-        bytes32 currentValueHash = confirmedValueHash;
-        if (currentValueHash == bytes32(0)) {
-            currentValueHash = id;
-        }
-
-        uint256 activeFork = activeForks[id];
-        bytes32[] storage valueHashes = preconfirmedValueHashes[id][activeFork];
-
-        // Set the current ValueHash to be the latest preconfirmed ValueHash if the confirmed ValueHash is part of the
-        // current active fork for this record.
-        for (uint256 i; i < valueHashes.length; i++) {
-            if (valueHashes[i] == confirmedValueHash) {
-                currentValueHash = valueHashes[valueHashes.length - 1];
-                break;
-            }
-        }
-
-        return currentValueHash == valueHash;
+        // Check if the provided ValueHash is current.
+        return valueHash == currentValueHash;
     }
 
     /// @notice Synchronizes the Keystore storage root from the reference L2.
     ///
     /// @param keystoreStorageRootProof The KeystoreStorageRootProof struct.
-    function syncKeystoreStorageRoot(KeystoreStorageRootProof calldata keystoreStorageRootProof) public {
+    function syncKeystoreStorageRoot(KeystoreStorageRootProof calldata keystoreStorageRootProof) external {
         // TODO: Verify the block number is not older.
         (bytes32 keystoreStorageRoot_,) = KeystoreProofLib.extractKeystoreStorageRoot({
             anchorStateRegistry: anchorStateRegistry,
@@ -189,16 +171,15 @@ contract BridgedKeystore {
     /// @notice Preconfirms a new update for a Keystore record.
     ///
     /// @dev This function should only be called if the new preconfirmed update can be added on top of the active fork
-    ///      history of the targeted Keystore record.
+    ///      of the targeted Keystore record.
     ///
     /// @param id The identifier of the Keystore record being updated.
     /// @param confirmedValueHashStorageProof The storage proof from which to extract the confirmed ValueHash of the
     ///                                       Keystore record from the `keystoreStorageRoot`.
-    /// @param confirmedIndex The index of the confirmed ValueHash in the active fork history of the Keystore record.
     /// @param currentValueHashPreimages The preimages of the ValuHash used. For the very first preconfirmation the
     ///                                  ValueHash used will be the confirmed ValueHash recovered from the current
     ///                                  `keystoreStorageRoot`. Otherwise the ValueHash used will be the latest
-    ///                                  ValueHash of the current active fork history associted with that Keystore
+    ///                                  ValueHash of the current active fork associated with that Keystore
     ///                                  record.
     /// @param newValueHash The new ValueHash to store in the Keystore record.
     /// @param newValueHashPreimages The preimages of the new ValueHash.
@@ -206,43 +187,20 @@ contract BridgedKeystore {
     function preconfirmUpdate(
         bytes32 id,
         bytes[] calldata confirmedValueHashStorageProof,
-        uint256 confirmedIndex,
         ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
         bytes calldata controllerProof
-    ) public {
-        bytes32 confirmedValueHash = KeystoreProofLib.extractKeystoreRecordValueHash({
-            keystoreStorageRoot: keystoreStorageRoot,
+    ) external {
+        // Get the active fork and ValueHashes of the Keystore record.
+        (bytes32[] storage preconfirmedValueHashes_, bytes32 confirmedValueHash, bytes32 currentValueHash) =
+        _recordValueHashes({
             id: id,
-            storageProof: confirmedValueHashStorageProof
+            keystoreStorageRoot_: keystoreStorageRoot,
+            confirmedValueHashStorageProof: confirmedValueHashStorageProof
         });
 
-        // Get the active fork history for the Keystore record.
-        uint256 activeFork = activeForks[id];
-        bytes32[] storage preconfirmedValueHashes_ = preconfirmedValueHashes[id][activeFork];
-
-        // By default assume the `confirmedValueHash` to be the current one.
-        bytes32 currentValueHash = confirmedValueHash;
-
-        // If the active fork is not empty, ensure that the `confirmedValueHash` is part of its history.
-        // If it is, the successive updates that have been applied on top of it are considered valid
-        // and we peek the latest one as the current ValueHash.
-        if (preconfirmedValueHashes_.length > 0) {
-            bytes32 valueHash = preconfirmedValueHashes_[confirmedIndex];
-            require(
-                valueHash == confirmedValueHash,
-                InvalidPreconfirmedValueHash({confirmedValueHash: confirmedValueHash, preconfirmedValueHash: valueHash})
-            );
-
-            currentValueHash = preconfirmedValueHashes_[preconfirmedValueHashes_.length - 1];
-        }
-        // If the active fork is empty push the `confirmedValueHash` to ensure it's part of its history.
-        // NOTE: Only possible the very first time.
-        else {
-            preconfirmedValueHashes_.push(confirmedValueHash);
-        }
-
+        // Check if the `newValueHash` update is authorized.
         KeystoreLib.verifyNewValueHash({
             id: id,
             currentValueHash: currentValueHash,
@@ -252,10 +210,18 @@ contract BridgedKeystore {
             controllerProof: controllerProof
         });
 
-        // Add the `newValueHash` to the latest fork history.
+        // If the active fork is empty push the `confirmedValueHash` to ensure it's part of its history.
+        // NOTE: Only happens the very first time the user is doing a preconfirmation on the chain.
+        // NOTE: If no ValueHash was confirmed yet for the Keystore record, the returned `confirmedValueHash` is the
+        //       Keystore identifier.
+        if (preconfirmedValueHashes_.length == 0) {
+            preconfirmedValueHashes_.push(confirmedValueHash);
+        }
+
+        // Add the `newValueHash` to the active fork.
         preconfirmedValueHashes_.push(newValueHash);
 
-        // TODO: Emit event.
+        emit KeystoreRecordUpdatePreconfirmed({id: id, newValueHash: newValueHash});
     }
 
     /// @notice Preconfirms a new Keystore record update in case of a conflict.
@@ -272,10 +238,10 @@ contract BridgedKeystore {
     ///                                    `keystoreStorageRoot`.
     /// @param newValueHash The new ValueHash store in the Keystore record.
     /// @param newValueHashPreimages The preimages of the new ValueHash.
-    /// @param conflictingIndex The index of the conflicting ValueHash in the active fork history of the Keystore
+    /// @param conflictingIndex The index of the conflicting ValueHash in the active fork of the Keystore
     ///                         record.
     /// @param conflictingValueHashPreimages The preimages of the ValueHash expected at the `conflictingIndex` in the
-    ///                                      active fork history.
+    ///                                      active fork.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function preconfirmUpdateWithFork(
         bytes32 id,
@@ -286,7 +252,7 @@ contract BridgedKeystore {
         uint256 conflictingIndex,
         ValueHashPreimages calldata conflictingValueHashPreimages,
         bytes calldata controllerProof
-    ) public {
+    ) external {
         bytes32 confirmedValueHash = KeystoreProofLib.extractKeystoreRecordValueHash({
             keystoreStorageRoot: keystoreStorageRoot,
             id: id,
@@ -320,7 +286,7 @@ contract BridgedKeystore {
             })
         );
 
-        // Use the `confirmedValueHash` as the `currentValueHash` to authorize the `newValueHash`.
+        // Check if the `newValueHash` update is authorized, using the confirmed ValueHash as current.
         KeystoreLib.verifyNewValueHash({
             id: id,
             currentValueHash: confirmedValueHash,
@@ -340,6 +306,61 @@ contract BridgedKeystore {
         preconfirmedValueHashes_.push(confirmedValueHash);
         preconfirmedValueHashes_.push(newValueHash);
 
-        // TODO: Emit event.
+        emit KeystoreRecordUpdatePreconfirmed({id: id, newValueHash: newValueHash});
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                        PRIVATE FUNCTIONS                                       //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Returns the Keystore record active fork as well as its confirmed and current ValueHashes.
+    ///
+    /// @dev Looks for the provided `confirmedValueHash` in the active fork of the Keystore record and, if found,
+    ///      returns the latest preconfirmed ValueHash. If not found, returns the `confirmedValueHash`.
+    ///
+    /// @param id The Keystore identifier.
+    /// @param keystoreStorageRoot_ The Keystore storage root to use when exracting the confirmed ValueHash.
+    /// @param confirmedValueHashStorageProof The storage proof from which to extract the confirmed ValueHash of the
+    ///                                       Keystore record.
+    ///
+    /// @return preconfirmedValueHashes_ The active fork of the Keystore record.
+    /// @return confirmedValueHash The Keystore record confirmed ValueHash.
+    /// @return currentValueHash The Keystore record current ValueHash.
+    function _recordValueHashes(
+        bytes32 id,
+        bytes32 keystoreStorageRoot_,
+        bytes[] calldata confirmedValueHashStorageProof
+    )
+        private
+        view
+        returns (bytes32[] storage preconfirmedValueHashes_, bytes32 confirmedValueHash, bytes32 currentValueHash)
+    {
+        // Get the active fork of the Keystore record.
+        uint256 activeFork = activeForks[id];
+        preconfirmedValueHashes_ = preconfirmedValueHashes[id][activeFork];
+
+        // Extract the confirmed ValueHash from the storage proof.
+        confirmedValueHash = KeystoreProofLib.extractKeystoreRecordValueHash({
+            keystoreStorageRoot: keystoreStorageRoot_,
+            id: id,
+            storageProof: confirmedValueHashStorageProof
+        });
+
+        // If no ValueHash is confirmed yet for the Keystore record, use its identifier.
+        if (confirmedValueHash == bytes32(0)) {
+            confirmedValueHash = id;
+        }
+
+        // Default the current ValueHash to the confirmed one.
+        currentValueHash = confirmedValueHash;
+
+        // Search for the confirmed ValueHash in the active fork and if found set the current ValueHash to be
+        // the latest preconfirmed ValueHash.
+        for (uint256 i; i < preconfirmedValueHashes_.length; i++) {
+            if (preconfirmedValueHashes_[i] == confirmedValueHash) {
+                currentValueHash = preconfirmedValueHashes_[preconfirmedValueHashes_.length - 1];
+                break;
+            }
+        }
     }
 }

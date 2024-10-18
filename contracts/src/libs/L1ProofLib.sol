@@ -25,8 +25,8 @@ struct HashiProofData {
 
 /// @dev An L1 block hash proof specific to OPStack L2 chains.
 struct OPStackProofData {
-    /// @dev The L2 block header.
-    bytes localBlockHeader;
+    /// @dev The L2 block header RLP encoded.
+    bytes blockHeaderRlp;
     /// @dev The L1Block oracle account proof on the L2.
     bytes[] l1BlockAccountProof;
     /// @dev The L1Block oracle hash slot storage proof on the L2.
@@ -34,6 +34,29 @@ struct OPStackProofData {
 }
 
 library L1ProofLib {
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                              ERRORS                                            //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Thrown when verifying an OPStackProofData if the block number is not within the 256 most recent blocks.
+    ///
+    /// @param blockNumber The block number provided from which to get the hash.
+    error BlockHashNotAvailable(uint256 blockNumber);
+
+    /// @notice Thrown when verifying an OPStackProofData if the block header does not match the block hash fetched
+    ///         from the block number using `blockhash`.
+    ///
+    /// @param blockHeaderHash The block header hash.
+    /// @param blockHash The block hash obtained by calling `blockhash(header.number)`.
+    error InvalidBlockHeader(bytes32 blockHeaderHash, bytes32 blockHash);
+
+    /// @notice Thrown when verifying an OPStackProofData if the extracted L1 block hash from the proof does not equal
+    ///         the expected L1 block hash to verify.
+    ///
+    /// @param l1Blockhash The L1 block hash extracted from the OPStackProofData.
+    /// @param expectedL1BlockHash The L1 block hash that was expected for verification.
+    error BlockHashMismatch(bytes32 l1Blockhash, bytes32 expectedL1BlockHash);
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                           CONSTANTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,26 +75,16 @@ library L1ProofLib {
     ///
     /// @param proof The L1 block proof data.
     /// @param expectedL1BlockHash The expected block hash to verify against.
-    ///
-    /// @return True if the expected L1 block hash is valid, flase otherwise.
-    function verifyL1BlockHash(L1BlockHashProof memory proof, bytes32 expectedL1BlockHash)
-        internal
-        view
-        returns (bool)
-    {
+    function verifyL1BlockHash(L1BlockHashProof memory proof, bytes32 expectedL1BlockHash) internal view {
         if (proof.proofType == L1ProofType.Hashi) {
             revert("ProofLib: NOT_IMPLEMENTED_YET");
-        }
-
-        if (proof.proofType == L1ProofType.OPStack) {
-            // Decode OPStack proof data.
+        } else if (proof.proofType == L1ProofType.OPStack) {
+            // Decode OPStack proof data and verify it.
             OPStackProofData memory opStackProof = abi.decode(proof.proofData, (OPStackProofData));
-
-            // Verify OPStack proof.
-            return _verifyBlockhashOPStack({proofData: opStackProof, expectedL1BlockHash: expectedL1BlockHash});
+            _verifyBlockHashOPStack({proofData: opStackProof, expectedL1BlockHash: expectedL1BlockHash});
+        } else {
+            revert("ProofLib: INVALID_PROOF_TYPE");
         }
-
-        revert("ProofLib: INVALID_PROOF_TYPE");
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -82,27 +95,23 @@ library L1ProofLib {
     ///
     /// @param proofData The OPStack proof data.
     /// @param expectedL1BlockHash The expected block hash to verify against.
-    ///
-    /// @return True if the expected L1 block hash is valid, flase otherwise.
-    function _verifyBlockhashOPStack(OPStackProofData memory proofData, bytes32 expectedL1BlockHash)
-        private
-        view
-        returns (bool)
-    {
-        BlockHeader memory localHeader = BlockLib.parseBlockHeader(proofData.localBlockHeader);
+    function _verifyBlockHashOPStack(OPStackProofData memory proofData, bytes32 expectedL1BlockHash) private view {
+        BlockHeader memory blockHeader = BlockLib.parseBlockHeader(proofData.blockHeaderRlp);
 
         // Get the block hash corresponding to the provided block number.
-        bytes32 localBlockhash = blockhash(localHeader.number);
+        bytes32 blockHash = blockhash(blockHeader.number);
 
-        // Ensure the block hash exists (i.e the block number provided is in the latest 256 most recent blocks).
-        require(localBlockhash != bytes32(0), "ProofLib: BLOCKHASH_NOT_AVAILABLE (OPStack)");
+        // Ensure the block hash is available (the block number provided is withinh the latest 256 most recent blocks).
+        require(blockHash != bytes32(0), BlockHashNotAvailable(blockHeader.number));
 
         // Ensure the block header is valid against the block hash being used.
-        require(localBlockhash == localHeader.hash, "ProofLib: INVALID_BLOCK_HASH (OPStack)");
+        require(
+            blockHash == blockHeader.hash, InvalidBlockHeader({blockHeaderHash: blockHeader.hash, blockHash: blockHash})
+        );
 
         // Extract the L1 block hash value from the L1Block account and storage proofs.
         bytes32 l1Blockhash = StorageProofLib.extractAccountStorageValue({
-            stateRoot: localHeader.stateRootHash,
+            stateRoot: blockHeader.stateRootHash,
             account: L1BLOCK_PREDEPLOY_ADDRESS,
             accountProof: proofData.l1BlockAccountProof,
             slot: L1BLOCK_HASH_SLOT,
@@ -110,6 +119,9 @@ library L1ProofLib {
         });
 
         // Ensure the extracted L1 block hash matches with the expected one.
-        return l1Blockhash == expectedL1BlockHash;
+        require(
+            l1Blockhash == expectedL1BlockHash,
+            BlockHashMismatch({l1Blockhash: l1Blockhash, expectedL1BlockHash: expectedL1BlockHash})
+        );
     }
 }

@@ -31,10 +31,6 @@ library KeystoreProofLib {
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
-    ///         block header does not match the L1 block hash returned by the `l1BlockHashOracle` contract.
-    error InvalidBlockHeader();
-
-    /// @notice Thrown when attempting to synchronize the Keystore storage root from the reference L2, but the provided
     ///         parameters do not match the recovered reference L2 OutputRoot.
     error InvalidL2OutputRootPreimages();
 
@@ -108,13 +104,10 @@ library KeystoreProofLib {
         BlockHeader memory header = BlockLib.parseBlockHeader(keystoreStorageRootProof.l1BlockHeaderRlp);
 
         // Ensure the provided L1 block header can be used (i.e the block hash is valid).
-        require(
-            L1ProofLib.verifyL1BlockHash({
-                proof: keystoreStorageRootProof.l1BlockHashProof,
-                expectedL1BlockHash: header.hash
-            }),
-            InvalidBlockHeader()
-        );
+        L1ProofLib.verifyL1BlockHash({
+            proof: keystoreStorageRootProof.l1BlockHashProof,
+            expectedL1BlockHash: header.hash
+        });
 
         // Get the OutputRoot that was submitted to the AnchorStateRegistry contract on L1.
         bytes32 outputRoot = StorageProofLib.extractAccountStorageValue({

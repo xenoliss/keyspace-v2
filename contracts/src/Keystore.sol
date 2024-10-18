@@ -4,8 +4,26 @@ pragma solidity ^0.8.27;
 import {KeystoreLib, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 
 contract Keystore {
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                              EVENTS                                            //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Emitted when a Keystore record is updated.
+    ///
+    /// @param id The Keystore identifier of the updated record.
+    /// @param newValueHash The new ValueHash stored in the record.
+    event KeystoreRecordSet(bytes32 id, bytes32 newValueHash);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                            STORAGE                                             //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+
     /// @notice The Keystore records.
     mapping(bytes32 id => bytes32 valueHash) public records;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    //                                        PUBLIC FUNCTIONS                                        //
+    ////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /// @notice Updates a Keystore record to a new `newValueHash`.
     ///
@@ -32,6 +50,6 @@ contract Keystore {
 
         records[id] = newValueHash;
 
-        // TODO: Emit event.
+        emit KeystoreRecordSet({id: id, newValueHash: newValueHash});
     }
 }
