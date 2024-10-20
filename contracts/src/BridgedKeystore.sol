@@ -13,7 +13,8 @@ contract BridgedKeystore {
     /// @notice Emitted when the Keystore storage root from the reference L2 is successfully synchronized.
     ///
     /// @param keystoreStorageRoot The new synchronized Keystore storage root.
-    event KeystoreRootSynchronized(bytes32 keystoreStorageRoot);
+    /// @param l1BlockNumber The L1 block number used to prove the Keystore storage root.
+    event KeystoreRootSynchronized(bytes32 keystoreStorageRoot, uint256 l1BlockNumber);
 
     /// @notice Emitted when a Keystore record update is preconfirmed.
     ///
@@ -39,6 +40,13 @@ contract BridgedKeystore {
     /// @param preconfirmedNonce The nonce committed in the preconfirmed ValueHash found at the provided lookup index.
     error InvalidConflictingNonce(uint256 confirmedNonce, uint256 preconfirmedNonce);
 
+    /// @notice Thrown when the L1 block number used by the provided Keystore storage root proof is older than the one
+    ///         used to prove the latest Keystore storage root.
+    ///
+    /// @param provenL1BlockNumber The L1 block number used to prove the latest Keystore storage root.
+    /// @param provingL1BlockNumber The L1 block number used byt the provided (stale) Keystore storage root proof.
+    error KeystoreStorageRootProofStale(uint256 provenL1BlockNumber, uint256 provingL1BlockNumber);
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                           CONSTANTS                                            //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -53,8 +61,11 @@ contract BridgedKeystore {
     //                                            STORAGE                                             //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice The reference L2 Keystore storage root.
+    /// @notice The latest proven reference L2 Keystore storage root.
     bytes32 public keystoreStorageRoot;
+
+    /// @notice The latest L1 block number used to prove the reference L2 Keystore storage root.
+    uint256 public l1BlockNumber;
 
     /// @notice The active fork for each Keystore identifier.
     ///
@@ -127,18 +138,19 @@ contract BridgedKeystore {
                 "Keystore root proofs are not allowed on this chain. Use deposit transactions instead."
             );
 
-            uint256 l1BlockNumber;
-            (keystoreStorageRoot_, l1BlockNumber) = KeystoreProofLib.extractKeystoreStorageRoot({
+            uint256 l1BlockNumber_;
+            (keystoreStorageRoot_, l1BlockNumber_) = KeystoreProofLib.extractKeystoreStorageRoot({
                 anchorStateRegistry: anchorStateRegistry,
                 keystore: keystore,
                 keystoreStorageRootProof: abi.decode(keystoreStorageRootProof, (KeystoreStorageRootProof))
             });
 
-            // TODO: Store the L1 block number with the keystoreStorageRoot so we can tell when a stateProof is too old.
-            uint256 lastUpdatedAtBlock = 0;
-            if (lastUpdatedAtBlock > l1BlockNumber) {
-                revert("Keystore root proof is older than what has already been synced onchain.");
-            }
+            // Ensure the L1 block number used by the provided Keystore storage root proof is not older than the one
+            // used to prove the latest Keystore storage root.
+            require(
+                l1BlockNumber_ >= l1BlockNumber,
+                KeystoreStorageRootProofStale({provenL1BlockNumber: l1BlockNumber, provingL1BlockNumber: l1BlockNumber_})
+            );
         }
 
         // Get the current ValueHash to use.
@@ -156,16 +168,24 @@ contract BridgedKeystore {
     ///
     /// @param keystoreStorageRootProof The KeystoreStorageRootProof struct.
     function syncKeystoreStorageRoot(KeystoreStorageRootProof calldata keystoreStorageRootProof) external {
-        // TODO: Verify the block number is not older.
-        (bytes32 keystoreStorageRoot_,) = KeystoreProofLib.extractKeystoreStorageRoot({
+        (bytes32 keystoreStorageRoot_, uint256 l1BlockNumber_) = KeystoreProofLib.extractKeystoreStorageRoot({
             anchorStateRegistry: anchorStateRegistry,
             keystore: keystore,
             keystoreStorageRootProof: keystoreStorageRootProof
         });
 
-        keystoreStorageRoot = keystoreStorageRoot_;
+        // Ensure the L1 block number used by the provided Keystore storage root proof is not older than the one
+        // used to prove the latest Keystore storage root.
+        require(
+            l1BlockNumber_ >= l1BlockNumber,
+            KeystoreStorageRootProofStale({provenL1BlockNumber: l1BlockNumber, provingL1BlockNumber: l1BlockNumber_})
+        );
 
-        emit KeystoreRootSynchronized({keystoreStorageRoot: keystoreStorageRoot_});
+        // Update the Keystore storage root and the corresponding L1 block number.
+        keystoreStorageRoot = keystoreStorageRoot_;
+        l1BlockNumber = l1BlockNumber_;
+
+        emit KeystoreRootSynchronized({keystoreStorageRoot: keystoreStorageRoot_, l1BlockNumber: l1BlockNumber_});
     }
 
     /// @notice Preconfirms a new update for a Keystore record.

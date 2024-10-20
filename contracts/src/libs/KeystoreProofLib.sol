@@ -95,7 +95,7 @@ library KeystoreProofLib {
     /// @param keystoreStorageRootProof The KeystoreStorageRootProof struct.
     ///
     /// @return The Keystore storage root on the reference L2.
-    /// @return The corresponding L1 block number.
+    /// @return The L1 block number used by the provided Keystore storage root proof.
     function extractKeystoreStorageRoot(
         address anchorStateRegistry,
         address keystore,

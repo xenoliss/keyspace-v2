@@ -38,7 +38,7 @@ contract Keystore {
         ValueHashPreimages calldata newValueHashPreimages,
         bytes calldata controllerProof
     ) public {
-        // Use the `records[id]` ValueHash to authorize the `newValueHash`.
+        // Check if the `newValueHash` update is authorized.
         KeystoreLib.verifyNewValueHash({
             id: id,
             currentValueHash: records[id],
