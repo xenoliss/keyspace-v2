@@ -201,7 +201,10 @@ contract BridgedKeystore {
     ///                                  ValueHash of the current active fork associated with that Keystore record.
     /// @param newValueHash The new ValueHash to store in the Keystore record.
     /// @param newValueHashPreimages The preimages of the new ValueHash.
-    /// @param l1BlockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param l1BlockData OPTIONAL: An L1 block header, RLP-encoded, and a proof of its validity.
+    ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
+    ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
+    ///                              controller `authorize` method to perform authorization based on the L1 state.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function preconfirmUpdate(
         bytes32 id,
@@ -209,7 +212,7 @@ contract BridgedKeystore {
         ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
-        bytes calldata l1BlockHeaderRlp,
+        bytes calldata l1BlockData,
         bytes calldata controllerProof
     ) external {
         // Get the active fork and ValueHashes of the Keystore record.
@@ -227,7 +230,7 @@ contract BridgedKeystore {
             currentValueHashPreimages: currentValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
-            l1BlockHeaderRlp: l1BlockHeaderRlp,
+            l1BlockData: l1BlockData,
             controllerProof: controllerProof
         });
 
@@ -262,7 +265,10 @@ contract BridgedKeystore {
     /// @param conflictingIndex The index of the conflicting ValueHash in the active fork of the Keystore record.
     /// @param conflictingValueHashPreimages The preimages of the ValueHash expected at the `conflictingIndex` in the
     ///                                      active fork.
-    /// @param l1BlockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param l1BlockData OPTIONAL: An L1 block header, RLP-encoded, and a proof of its validity.
+    ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
+    ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
+    ///                              controller `authorize` method to perform authorization based on the L1 state.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function preconfirmUpdateWithFork(
         bytes32 id,
@@ -272,7 +278,7 @@ contract BridgedKeystore {
         ValueHashPreimages calldata newValueHashPreimages,
         uint256 conflictingIndex,
         ValueHashPreimages calldata conflictingValueHashPreimages,
-        bytes calldata l1BlockHeaderRlp,
+        bytes calldata l1BlockData,
         bytes calldata controllerProof
     ) external {
         // Extract the confirmed ValueHash from the `confirmedValueHashStorageProof`.
@@ -326,7 +332,7 @@ contract BridgedKeystore {
             currentValueHashPreimages: confirmedValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
-            l1BlockHeaderRlp: l1BlockHeaderRlp,
+            l1BlockData: l1BlockData,
             controllerProof: controllerProof
         });
 

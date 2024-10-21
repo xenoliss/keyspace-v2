@@ -31,14 +31,17 @@ contract Keystore {
     /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keystore record.
     /// @param newValueHash The new ValueHash to store in the Keystore record.
     /// @param newValueHashPreimages The preimages of the new ValueHash.
-    /// @param l1BlockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param l1BlockData OPTIONAL: An L1 block header, RLP-encoded, and a proof of its validity.
+    ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
+    ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
+    ///                              controller `authorize` method to perform authorization based on the L1 state.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function set(
         bytes32 id,
         ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
-        bytes calldata l1BlockHeaderRlp,
+        bytes calldata l1BlockData,
         bytes calldata controllerProof
     ) public {
         // Check if the `newValueHash` update is authorized.
@@ -48,7 +51,7 @@ contract Keystore {
             currentValueHashPreimages: currentValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
-            l1BlockHeaderRlp: l1BlockHeaderRlp,
+            l1BlockData: l1BlockData,
             controllerProof: controllerProof
         });
 

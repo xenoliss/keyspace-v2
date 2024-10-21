@@ -86,7 +86,10 @@ library KeystoreLib {
     /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keystore record.
     /// @param newValueHash The new ValueHash to store in the Keystore record.
     /// @param newValueHashPreimages The preimages of the new ValueHash.
-    /// @param l1BlockHeaderRlp The L1 block header, RLP-encoded.
+    /// @param l1BlockData OPTIONAL: An L1 block header, RLP-encoded, and a proof of its validity.
+    ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
+    ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
+    ///                              controller `authorize` method to perform authorization based on the L1 state.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function verifyNewValueHash(
         bytes32 id,
@@ -94,7 +97,7 @@ library KeystoreLib {
         ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
-        bytes calldata l1BlockHeaderRlp,
+        bytes calldata l1BlockData,
         bytes calldata controllerProof
     ) internal {
         // Ensure that the current and new ValueHash preimages are correct.
@@ -107,9 +110,15 @@ library KeystoreLib {
             InvalidNonce({currentNonce: currentValueHashPreimages.nonce, newNonce: newValueHashPreimages.nonce})
         );
 
-        // Parse the provided L1 block header.
-        // TODO: Verify the validity of the provided L1 block header.
-        BlockHeader memory l1BlockHeader = BlockLib.parseBlockHeader(l1BlockHeaderRlp);
+        // If provided, parse the L1 block header and ensure it's valid.
+        BlockHeader memory l1BlockHeader;
+        if (l1BlockData.length > 0) {
+            (bytes memory l1BlockHeaderRlp, L1BlockHashProof memory l1BlockHashProof) =
+                abi.decode(l1BlockData, (bytes, L1BlockHashProof));
+
+            l1BlockHeader = BlockLib.parseBlockHeader(l1BlockHeaderRlp);
+            L1ProofLib.verifyL1BlockHash({proof: l1BlockHashProof, expectedL1BlockHash: l1BlockHeader.hash});
+        }
 
         // Authorize the update from the controller.
         require(
