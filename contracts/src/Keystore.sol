@@ -25,17 +25,20 @@ contract Keystore {
     //                                        PUBLIC FUNCTIONS                                        //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Updates a Keystore record to a new `newValueHash`.
+    /// @notice Updates a Keystore record to a new ValueHash.
     ///
     /// @param id The identifier of the Keystore record to update.
     /// @param currentValueHashPreimages The preimages of the current ValueHash in the Keystore record.
     /// @param newValueHash The new ValueHash to store in the Keystore record.
+    /// @param newValueHashPreimages The preimages of the new ValueHash.
+    /// @param l1BlockHeaderRlp The L1 block header, RLP-encoded.
     /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function set(
         bytes32 id,
         ValueHashPreimages calldata currentValueHashPreimages,
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
+        bytes calldata l1BlockHeaderRlp,
         bytes calldata controllerProof
     ) public {
         // Check if the `newValueHash` update is authorized.
@@ -45,6 +48,7 @@ contract Keystore {
             currentValueHashPreimages: currentValueHashPreimages,
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
+            l1BlockHeaderRlp: l1BlockHeaderRlp,
             controllerProof: controllerProof
         });
 

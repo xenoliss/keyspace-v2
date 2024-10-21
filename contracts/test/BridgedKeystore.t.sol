@@ -3,10 +3,10 @@ pragma solidity ^0.8.27;
 
 import {Test, console} from "forge-std/Test.sol";
 
-import {BridgedKeystore} from "../src/BridgedKeystore.sol";
-
-import {KeystoreStorageRootProof} from "../src/libs/KeystoreProofLib.sol";
+import {KeystoreStorageRootProof} from "../src/libs/KeystoreLib.sol";
 import {L1BlockHashProof, L1ProofType, OPStackProofData} from "../src/libs/L1ProofLib.sol";
+
+import {BridgedKeystore} from "../src/BridgedKeystore.sol";
 
 struct StorageProofItem {
     bytes32 key;
