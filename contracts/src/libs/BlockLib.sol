@@ -7,8 +7,8 @@ import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 struct BlockHeader {
     /// @dev The block hash.
     bytes32 hash;
-    /// @dev The state root hash.
-    bytes32 stateRootHash;
+    /// @dev The state root.
+    bytes32 stateRoot;
     /// @dev The block number.
     uint256 number;
     /// @dev The block timestam
@@ -31,7 +31,7 @@ library BlockLib {
         BlockHeader memory result;
         RLPReader.RLPItem[] memory headerFields = headerRlpBytes.toRlpItem().toList();
 
-        result.stateRootHash = bytes32(headerFields[3].toUint());
+        result.stateRoot = bytes32(headerFields[3].toUint());
         result.number = headerFields[8].toUint();
         result.timestamp = headerFields[11].toUint();
         result.hash = keccak256(headerRlpBytes);

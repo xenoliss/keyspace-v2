@@ -9,7 +9,7 @@ remappings = [
     "Solidity-RLP/=lib/Solidity-RLP/contracts/",
 ]
 
-fs_permissions = [{ access = 'read', path = './test/res/' }]
+fs_permissions = [{ access = 'read', path = './test/_res/' }]
 
 
 [fmt]

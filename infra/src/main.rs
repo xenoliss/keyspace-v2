@@ -38,33 +38,48 @@ async fn main() {
         ._0;
     println!("AnchorStateRegistry OutputRoot: {output_root:?}");
 
-    // Get the l2 state at the block that has been commited to the AnchorStateRegistry L1 contract.
-    let commited_l2_block_number = output_root.l2BlockNumber.as_limbs()[0];
-    let l2_block = base_sepolia_provider
-        .get_block_by_number(BlockNumberOrTag::Number(commited_l2_block_number), true)
+    println!("\n|\n|\nv\n");
+
+    // Get the reference l2 state at the block that has been settled to the AnchorStateRegistry L1 contract.
+    let settled_l2_block_number = output_root.l2BlockNumber.as_limbs()[0];
+    let settled_l2_block = base_sepolia_provider
+        .get_block_by_number(BlockNumberOrTag::Number(settled_l2_block_number), true)
         .await
         .unwrap()
         .unwrap();
 
-    let l2_block_hash = l2_block.header.hash;
-    let l2_state_root = l2_block.header.state_root;
-    let message_passer_storage_hash = base_sepolia_provider
+    let settled_l2_block_hash = settled_l2_block.header.hash;
+    let settled_l2_state_root = settled_l2_block.header.state_root;
+    let settled_message_passer_storage_root = base_sepolia_provider
         .get_proof(
             Address::from_str("0x4200000000000000000000000000000000000016").unwrap(),
             vec![],
         )
-        .block_id(commited_l2_block_number.into())
+        .block_id(settled_l2_block_number.into())
         .await
         .unwrap()
         .storage_hash;
-    println!("settled l2 state root {l2_state_root:?}");
-    println!("settled l2 to l1 message passer storage hash {message_passer_storage_hash:?}");
-    println!("settled l2 block hash {l2_block_hash:?}");
+    println!("settled l2 state root {settled_l2_state_root:?}");
+    println!("settled message passer storage root {settled_message_passer_storage_root:?}");
+    println!("settled l2 block hash {settled_l2_block_hash:?}");
 
-    // Read the current L2 block number and fetch the correspondib L1 block number available from
-    // the L1Block oracle contract.
+    println!("===================================================================================");
+
+    // Read the current L2 block number and fetch the correspondib L1 block number available from the L1Block oracle contract.
     let current_l2_block_number = base_sepolia_provider.get_block_number().await.unwrap();
     println!("current l2 block number {current_l2_block_number:?}");
+    let current_l2_block = base_sepolia_provider
+        .get_block_by_number(BlockNumberOrTag::Number(current_l2_block_number), true)
+        .await
+        .unwrap()
+        .unwrap();
+    let header: alloy_consensus::Header = current_l2_block.header.try_into().unwrap();
+    println!(
+        "current l2 block block header RLP {}",
+        alloy_rlp::encode(&header).encode_hex()
+    );
+
+    println!("\n|\n|\nv\n");
 
     let l1_block_number = l1_block_contract
         .number()
@@ -74,7 +89,7 @@ async fn main() {
         .unwrap()
         ._0;
 
-    println!("l1 block number: {l1_block_number}");
+    println!("l1 block number (from L1Block contract): {l1_block_number}");
 
     // Get the corresponding L1 block and print the RLP header.
     let l1_block = eth_sepolia_provider
@@ -84,5 +99,8 @@ async fn main() {
         .unwrap();
 
     let header: alloy_consensus::Header = l1_block.header.try_into().unwrap();
-    println!("{}", alloy_rlp::encode(&header).encode_hex());
+    println!(
+        "l1 block header RLP {}",
+        alloy_rlp::encode(&header).encode_hex()
+    );
 }

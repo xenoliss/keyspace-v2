@@ -100,62 +100,21 @@ contract BridgedKeystore {
 
     /// @notice Checks if the provided ValueHash is current for the given Keystore record identifier.
     ///
-    /// @dev This function verifies the provided ValueHash against the current state proof of the Keystore record
-    ///      identifier. It first checks if the proof is rooted at the stored keystoreStorageRoot or a more recent L1
-    ///      block. On L3 chains and L2s of alt-L1s, proofs against L1 blocks are prohibited, and the
-    ///      keystoreStorageRoot must be synced with a deposit transaction.
-    ///
-    ///      If the proof contains a root proof, it verifies the root proof and ensures it is not older than the
-    ///      already synced on-chain state. The function then verifies the ValueHash against the Keystore record proof
-    ///      root.
-    ///
-    ///      If the verified ValueHash is on the current fork for the Keystore record, the function uses the latest
-    ///      ValueHash on the fork.
-    ///
     /// @param id The identifier of the Keystore record.
     /// @param valueHash The ValueHash of the Keystore record that is being checked.
-    /// @param keystoreStorageRootProof OPTIONAL: A Keystore account proof, proving a more recent Keystore root.
     /// @param confirmedValueHashStorageProof The storage proof from which to extract the confirmed ValueHash of the
     ///                                       Keystore record.
     ///
     /// @return bool True if the ValueHash is current, false otherwise.
-    function isValueHashCurrent(
-        bytes32 id,
-        bytes32 valueHash,
-        bytes calldata keystoreStorageRootProof,
-        bytes[] calldata confirmedValueHashStorageProof
-    ) external view returns (bool) {
-        // Defaults to the latest Keystore storage root known.
-        bytes32 keystoreStorageRoot_ = keystoreStorageRoot;
-
-        // Try to extract a more recent Keystore storage root if a `keystoreStorageRootProof` was provided.
-        if (keystoreStorageRootProof.length > 0) {
-            // TODO: Disallow proofs against L1 blocks on L3 chains and alt-L1 L2s.
-            bool isRootProofAllowed = true;
-            require(
-                isRootProofAllowed,
-                "Keystore root proofs are not allowed on this chain. Use deposit transactions instead."
-            );
-
-            uint256 l1BlockNumber_;
-            (keystoreStorageRoot_, l1BlockNumber_) = KeystoreLib.extractKeystoreStorageRoot({
-                anchorStateRegistry: anchorStateRegistry,
-                keystore: keystore,
-                keystoreStorageRootProof: abi.decode(keystoreStorageRootProof, (KeystoreStorageRootProof))
-            });
-
-            // Ensure the L1 block number used by the provided Keystore storage root proof is not older than the one
-            // used to prove the latest Keystore storage root.
-            require(
-                l1BlockNumber_ >= l1BlockNumber,
-                KeystoreStorageRootProofStale({provenL1BlockNumber: l1BlockNumber, provingL1BlockNumber: l1BlockNumber_})
-            );
-        }
-
+    function isValueHashCurrent(bytes32 id, bytes32 valueHash, bytes[] calldata confirmedValueHashStorageProof)
+        external
+        view
+        returns (bool)
+    {
         // Get the current ValueHash to use.
         (,, bytes32 currentValueHash) = _recordValueHashes({
             id: id,
-            keystoreStorageRoot_: keystoreStorageRoot_,
+            keystoreStorageRoot_: keystoreStorageRoot,
             confirmedValueHashStorageProof: confirmedValueHashStorageProof
         });
 
@@ -172,6 +131,8 @@ contract BridgedKeystore {
             keystore: keystore,
             keystoreStorageRootProof: keystoreStorageRootProof
         });
+
+        // TODO: If the `l1BlockNumber` is uninitialized, ensure the proven block number is not too old.
 
         // Ensure the L1 block number used by the provided Keystore storage root proof is not older than the one
         // used to prove the latest Keystore storage root.

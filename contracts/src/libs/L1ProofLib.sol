@@ -26,7 +26,7 @@ struct HashiProofData {
 /// @dev An L1 block hash proof specific to OPStack L2 chains.
 struct OPStackProofData {
     /// @dev The L2 block header RLP encoded.
-    bytes blockHeaderRlp;
+    bytes l2BlockHeaderRlp;
     /// @dev The L1Block oracle account proof on the L2.
     bytes[] l1BlockAccountProof;
     /// @dev The L1Block oracle hash slot storage proof on the L2.
@@ -91,12 +91,15 @@ library L1ProofLib {
     //                                         PRIVATE FUNCTIONS                                      //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Verifies OPStack block hashes within the 256-block limit.
+    /// @notice Verifies OPStack block hashes within the 256 blocks limit.
     ///
     /// @param proofData The OPStack proof data.
     /// @param expectedL1BlockHash The expected block hash to verify against.
     function _verifyBlockHashOPStack(OPStackProofData memory proofData, bytes32 expectedL1BlockHash) private view {
-        BlockHeader memory blockHeader = BlockLib.parseBlockHeader(proofData.blockHeaderRlp);
+        BlockHeader memory blockHeader = BlockLib.parseBlockHeader(proofData.l2BlockHeaderRlp);
+
+        // TODO: If we're trying to prove the current block this will fail. Should we allow proving the current block
+        //       by comparing the block number) and if so directly read the L1Block contract to get the L1 block hash?
 
         // Get the block hash corresponding to the provided block number.
         bytes32 blockHash = blockhash(blockHeader.number);
@@ -111,7 +114,7 @@ library L1ProofLib {
 
         // Extract the L1 block hash value from the L1Block account and storage proofs.
         bytes32 l1Blockhash = StorageProofLib.extractAccountStorageValue({
-            stateRoot: blockHeader.stateRootHash,
+            stateRoot: blockHeader.stateRoot,
             account: L1BLOCK_PREDEPLOY_ADDRESS,
             accountProof: proofData.l1BlockAccountProof,
             slot: L1BLOCK_HASH_SLOT,

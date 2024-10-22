@@ -215,7 +215,7 @@ library KeystoreLib {
 
         // Get the OutputRoot that was submitted to the AnchorStateRegistry contract on L1.
         bytes32 outputRoot = StorageProofLib.extractAccountStorageValue({
-            stateRoot: header.stateRootHash,
+            stateRoot: header.stateRoot,
             account: anchorStateRegistry,
             accountProof: keystoreStorageRootProof.anchorStateRegistryAccountProof,
             slot: ANCHOR_STATE_REGISTRY_SLOT,
