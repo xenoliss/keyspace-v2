@@ -33,8 +33,8 @@ struct ValueHashPreimages {
     address controller;
     /// @dev The nonce associated with the Keystore record.
     uint96 nonce;
-    /// @dev The current storage hash committed in the Keystore record.
-    bytes32 storageHash;
+    /// @dev The Keystore record authentication data.
+    bytes authData;
 }
 
 library KeystoreLib {
@@ -145,7 +145,7 @@ library KeystoreLib {
     {
         // Recompute the Keystore record value hash from the provided preimages.
         bytes32 valueHashFromPreimages = keccak256(
-            abi.encodePacked(valueHashPreimages.controller, valueHashPreimages.nonce, valueHashPreimages.storageHash)
+            abi.encodePacked(valueHashPreimages.controller, valueHashPreimages.nonce, valueHashPreimages.authData)
         );
 
         // Ensure the recomputed ValueHash matches witht the given valueHash` parameter.

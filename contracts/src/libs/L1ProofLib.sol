@@ -46,8 +46,8 @@ library L1ProofLib {
     /// @notice Thrown when verifying an OPStackProofData if the block header does not match the block hash fetched
     ///         from the block number using `blockhash`.
     ///
-    /// @param blockHeaderHash The block header hash.
-    /// @param blockHash The block hash obtained by calling `blockhash(header.number)`.
+    /// @param blockHeaderHash The L2 block header hash.
+    /// @param blockHash The L2 block hash obtained by calling `blockhash(header.number)`.
     error InvalidBlockHeader(bytes32 blockHeaderHash, bytes32 blockHash);
 
     /// @notice Thrown when verifying an OPStackProofData if the extracted L1 block hash from the proof does not equal
@@ -98,13 +98,11 @@ library L1ProofLib {
     function _verifyBlockHashOPStack(OPStackProofData memory proofData, bytes32 expectedL1BlockHash) private view {
         BlockHeader memory blockHeader = BlockLib.parseBlockHeader(proofData.l2BlockHeaderRlp);
 
-        // TODO: If we're trying to prove the current block this will fail. Should we allow proving the current block
-        //       by comparing the block number) and if so directly read the L1Block contract to get the L1 block hash?
-
         // Get the block hash corresponding to the provided block number.
         bytes32 blockHash = blockhash(blockHeader.number);
 
-        // Ensure the block hash is available (the block number provided is withinh the latest 256 most recent blocks).
+        // TODO: Seems redundant with the next check. Double check that we can remove this require.
+        // Ensure the block hash is available (the block number provided is within the latest 256 most recent blocks).
         require(blockHash != bytes32(0), BlockHashNotAvailable(blockHeader.number));
 
         // Ensure the block header is valid against the block hash being used.
