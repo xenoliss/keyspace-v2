@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.27;
 
-import {Vm} from "forge-std/Vm.sol";
+import "forge-std/console.sol";
+
+import {VM} from "./VmExport.sol";
 
 struct StorageProof {
     bytes32 key;
@@ -19,8 +21,8 @@ struct Proof {
     StorageProof[] storageProofs;
 }
 
-function parseProof(Vm vm, string memory path) view returns (Proof memory proof) {
-    string memory json = vm.readFile(path);
-    bytes memory data = vm.parseJson(json);
+function parseProof(string memory path) view returns (Proof memory proof) {
+    string memory json = VM.readFile(path);
+    bytes memory data = VM.parseJson(json);
     return abi.decode(data, (Proof));
 }

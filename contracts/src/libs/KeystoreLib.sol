@@ -34,7 +34,9 @@ struct ValueHashPreimages {
     /// @dev The nonce associated with the Keystore record.
     uint96 nonce;
     /// @dev The Keystore record authentication data.
-    bytes authData;
+    //       NOTE: Wallet implementors are free to put any data here, including binding commitments
+    //             if the data gets too big to be fully provided.
+    bytes data;
 }
 
 library KeystoreLib {
@@ -124,7 +126,7 @@ library KeystoreLib {
         require(
             IRecordController(currentValueHashPreimages.controller).authorize({
                 id: id,
-                currentValueHash: currentValueHash,
+                currentValue: currentValueHashPreimages.data,
                 newValueHash: newValueHash,
                 l1BlockHeader: l1BlockHeader,
                 proof: controllerProof
@@ -145,7 +147,7 @@ library KeystoreLib {
     {
         // Recompute the Keystore record value hash from the provided preimages.
         bytes32 valueHashFromPreimages = keccak256(
-            abi.encodePacked(valueHashPreimages.controller, valueHashPreimages.nonce, valueHashPreimages.authData)
+            abi.encodePacked(valueHashPreimages.controller, valueHashPreimages.nonce, valueHashPreimages.data)
         );
 
         // Ensure the recomputed ValueHash matches witht the given valueHash` parameter.

@@ -5,11 +5,11 @@ import {Test, console} from "forge-std/Test.sol";
 
 import {StorageProofLib} from "../../src/libs/StorageProofLib.sol";
 
-import {Proof, StorageProof, parseProof} from "../_utils/StorageProofStructs.sol";
+import {Proof, StorageProof, parseProof} from "../_utils/ProofUtils.sol";
 
 contract StorageProofLibTest is Test {
     function test_extractAccountStorageValue() public view {
-        Proof memory proof = parseProof({vm: vm, path: "./test/_res/usdc_storage_proof.base.21442537.json"});
+        Proof memory proof = parseProof("./test/_res/usdc_storage_proof.base.21442537.json");
 
         for (uint256 i; i < proof.storageProofs.length; i++) {
             StorageProof memory storageProof = proof.storageProofs[i];
@@ -27,7 +27,7 @@ contract StorageProofLibTest is Test {
     }
 
     function test_extractAccountStorageRoot() public view {
-        Proof memory proof = parseProof({vm: vm, path: "./test/_res/usdc_storage_proof.base.21442537.json"});
+        Proof memory proof = parseProof("./test/_res/usdc_storage_proof.base.21442537.json");
 
         bytes32 storageRoot = StorageProofLib.extractAccountStorageRoot({
             stateRoot: 0x892b8fba153f875f92bcb2c1ce06a67858a5e1e647535aefdb155ec2c50814b3,
@@ -39,7 +39,7 @@ contract StorageProofLibTest is Test {
     }
 
     function test_extractSlotValue() public view {
-        Proof memory proof = parseProof({vm: vm, path: "./test/_res/usdc_storage_proof.base.21442537.json"});
+        Proof memory proof = parseProof("./test/_res/usdc_storage_proof.base.21442537.json");
 
         for (uint256 i; i < proof.storageProofs.length; i++) {
             StorageProof memory storageProof = proof.storageProofs[i];

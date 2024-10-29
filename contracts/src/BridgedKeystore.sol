@@ -4,6 +4,8 @@ pragma solidity ^0.8.27;
 import {KeystoreLib, KeystoreStorageRootProof, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 import {StorageProofLib} from "./libs/StorageProofLib.sol";
 
+import {Keystore} from "./Keystore.sol";
+
 contract BridgedKeystore {
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              EVENTS                                            //
@@ -56,6 +58,9 @@ contract BridgedKeystore {
     /// @notice The address of the `Keystore` contract on the reference L2.
     address public immutable keystore;
 
+    /// @notice The reference chain id.
+    uint256 public immutable refChainId;
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                            STORAGE                                             //
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,9 +90,11 @@ contract BridgedKeystore {
     ///
     /// @param anchorStateRegistry_ The address of the `AnchorStateRegistry` contract on L1.
     /// @param keystore_ The address of the `Keystore` contract on the reference L2.
-    constructor(address anchorStateRegistry_, address keystore_) {
+    /// @param refChainId_ The reference chain id.
+    constructor(address anchorStateRegistry_, address keystore_, uint256 refChainId_) {
         anchorStateRegistry = anchorStateRegistry_;
         keystore = keystore_;
+        refChainId = refChainId_;
 
         // FIXME: This allows a BridgedKeystore to be deployed uninitialized, which will allow old keystore states to be
         // used on alt-L1s. We can require initialization and use the timestamp from the keystore proof's L1 block
@@ -111,6 +118,11 @@ contract BridgedKeystore {
         view
         returns (bool)
     {
+        // On the reference chain, the BridgedKeystore is just a passthrough.
+        if (refChainId == block.chainid) {
+            return Keystore(keystore).records(id) == valueHash;
+        }
+
         // Get the current ValueHash to use.
         (,, bytes32 currentValueHash) = _recordValueHashes({
             id: id,

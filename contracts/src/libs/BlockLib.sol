@@ -3,17 +3,7 @@ pragma solidity ^0.8.27;
 
 import {RLPReader} from "Solidity-RLP/RLPReader.sol";
 
-/// @dev Block header structure returned by `parseBlockHeader()`.
-struct BlockHeader {
-    /// @dev The block hash.
-    bytes32 hash;
-    /// @dev The state root.
-    bytes32 stateRoot;
-    /// @dev The block number.
-    uint256 number;
-    /// @dev The block timestam
-    uint256 timestamp;
-}
+import {BlockHeader} from "../interfaces/IRecordController.sol";
 
 library BlockLib {
     using RLPReader for RLPReader.RLPItem;
