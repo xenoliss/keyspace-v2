@@ -39,6 +39,15 @@ struct ValueHashPreimages {
     bytes data;
 }
 
+/// @dev The proofs provided to a Keystore record controller to authorize an update.
+struct ControllerProofs {
+    /// @dev A proof provided to the Keystore record `controller` to authorize an update.
+    bytes updateProof;
+    /// @dev OPTIONAL: A safeguard proof provided to the Keystore record `controller` to ensure the updated record value
+    ///                is as expected.
+    bytes updatedValueProof;
+}
+
 library KeystoreLib {
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     //                                              ERRORS                                            //
@@ -57,7 +66,11 @@ library KeystoreLib {
     error InvalidNonce(uint256 currentNonce, uint256 newNonce);
 
     /// @notice Thrown when the Keystore record controller prevents the update.
-    error Unauthorized();
+    error UnauthorizedUpdate();
+
+    /// @notice Thrown when the updated Keystore record value does not verify against the provided proof
+    ///         for the new value.
+    error InvalidUpdate();
 
     /// @notice Thrown when the provided OutputRoot preimages do not has to the expected OutputRoot.
     error InvalidL2OutputRootPreimages();
@@ -92,7 +105,7 @@ library KeystoreLib {
     ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
     ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
     ///                              controller `authorize` method to perform authorization based on the L1 state.
-    /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
+    /// @param controllerProofs The `ControllerProofs` struct containing the necessary proofs to authorize the update.
     function verifyNewValueHash(
         bytes32 id,
         bytes32 currentValueHash,
@@ -100,7 +113,7 @@ library KeystoreLib {
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
         bytes calldata l1BlockData,
-        bytes calldata controllerProof
+        ControllerProofs calldata controllerProofs
     ) internal {
         // Ensure that the current and new ValueHash preimages are correct.
         verifyValueHashPreimages({valueHash: currentValueHash, valueHashPreimages: currentValueHashPreimages});
@@ -129,10 +142,24 @@ library KeystoreLib {
                 currentValue: currentValueHashPreimages.data,
                 newValueHash: newValueHash,
                 l1BlockHeader: l1BlockHeader,
-                proof: controllerProof
+                proof: controllerProofs.updateProof
             }),
-            Unauthorized()
+            UnauthorizedUpdate()
         );
+
+        // If provided, ensure the updated value proof is valid.
+        if (controllerProofs.updatedValueProof.length > 0) {
+            require(
+                IRecordController(newValueHashPreimages.controller).authorize({
+                    id: id,
+                    currentValue: newValueHashPreimages.data,
+                    newValueHash: newValueHash,
+                    l1BlockHeader: l1BlockHeader,
+                    proof: controllerProofs.updatedValueProof
+                }),
+                InvalidUpdate()
+            );
+        }
     }
 
     /// @notice Recomputes the ValueHash from the provided preimages and ensures it maches with the given `valueHash`.

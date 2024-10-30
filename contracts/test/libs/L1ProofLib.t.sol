@@ -8,26 +8,6 @@ import {L1BlockHashProof, L1ProofLib, L1ProofType, OPStackProofData} from "../..
 import {Proof, StorageProof, parseProof} from "../_utils/ProofUtils.sol";
 
 contract L1ProofLibTest is Test {
-    function test_verifyL1BlockHash_OPStack_reverts_whenBlockHashIsTooOld() public {
-        // Fork L2 at specific block number.
-        // NOTE: Set at a block number + a small offset to simulate some elapsed time.
-        //       Also proving the current l2 block is not supported as `blockhash(currentBlockNumber)` returns 0.
-        vm.createSelectFork("https://sepolia.base.org", 16954442 + 257);
-
-        // Block https://sepolia.basescan.org/block/16954442
-        bytes memory l2BlockHeaderRlp =
-            hex"f90245a080b5c058ff243f88d6424c3690080f2f99e96160105654fe9031ea54811fce5ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347944200000000000000000000000000000000000011a00052ec1011f1d7411810f5ca496600c9b4923602af1760e86710c89a628c06ada0914f22481c066720e5633e3700d7cd28feb33e1b53b17fda48ae8043507e8e28a05243b74a937da53f6b7b7bfb208cbd46c25aa87def1c204c897c0735d9921395b901009020000000000000000220202010000000090812020008c0040c090420200000004000100000800040900a000900000000170010000000000000040000000080002410404100800800014008000020000800000403040102200201113202006000008101028000000000000000000d020000480009000000000024100100000003440a0040080004200400000000041010001840006090000021002004040000810812001004000402000080001008000000080000010001000000c0100004010000080208400000016004004008020800000008004800040a10000000002222000004000000000060420000000040420000080000000002000800010000800080840102b44a84039387008346e9c8846718c77480a0269788445cf43ed7d7acd44d6032d0eabeae380b3868a72e9a64b7909bb170e888000000000000000084626b6b06a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b4218080a04dd76c16f6e4177701c31b1ef6c2280709b1d3dd29130f4e4ebd77c4346cdfa5";
-
-        OPStackProofData memory l1BlockProofData;
-        l1BlockProofData.l2BlockHeaderRlp = l2BlockHeaderRlp;
-
-        vm.expectRevert(abi.encodeWithSelector(L1ProofLib.BlockHashNotAvailable.selector, 16954442));
-        L1ProofLib.verifyL1BlockHash({
-            proof: L1BlockHashProof({proofType: L1ProofType.OPStack, proofData: abi.encode(l1BlockProofData)}),
-            expectedL1BlockHash: bytes32(uint256(0xcafe))
-        });
-    }
-
     function test_verifyL1BlockHash_OPStack_reverts_whenBlockHeaderIsInvalid() public {
         // Fork L2 at specific block number.
         // NOTE: Set at a block that is more than 256 blocks ahead of the block being proven to trigger the error.

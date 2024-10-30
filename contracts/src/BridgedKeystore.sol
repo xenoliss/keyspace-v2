@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.27;
 
-import {KeystoreLib, KeystoreStorageRootProof, ValueHashPreimages} from "./libs/KeystoreLib.sol";
+import {ControllerProofs, KeystoreLib, KeystoreStorageRootProof, ValueHashPreimages} from "./libs/KeystoreLib.sol";
 import {StorageProofLib} from "./libs/StorageProofLib.sol";
 
 import {Keystore} from "./Keystore.sol";
@@ -178,7 +178,6 @@ contract BridgedKeystore {
     ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
     ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
     ///                              controller `authorize` method to perform authorization based on the L1 state.
-    /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
     function preconfirmUpdate(
         bytes32 id,
         bytes[] calldata confirmedValueHashStorageProof,
@@ -186,7 +185,7 @@ contract BridgedKeystore {
         bytes32 newValueHash,
         ValueHashPreimages calldata newValueHashPreimages,
         bytes calldata l1BlockData,
-        bytes calldata controllerProof
+        ControllerProofs calldata controllerProofs
     ) external {
         // Get the active fork and ValueHashes of the Keystore record.
         (bytes32[] storage preconfirmedValueHashes_, bytes32 confirmedValueHash, bytes32 currentValueHash) =
@@ -204,7 +203,7 @@ contract BridgedKeystore {
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
             l1BlockData: l1BlockData,
-            controllerProof: controllerProof
+            controllerProofs: controllerProofs
         });
 
         // If the active fork is empty push the `confirmedValueHash` to ensure it's part of its history.
@@ -242,7 +241,7 @@ contract BridgedKeystore {
     ///                              If present, it is expected to be `abi.encode(l1BlockHeaderRlp, l1BlockHashProof)`.
     ///                              This OPTIONAL L1 block header is meant to be provided to the Keystore record
     ///                              controller `authorize` method to perform authorization based on the L1 state.
-    /// @param controllerProof A proof provided to the Keystore record `controller` to authorize the update.
+    /// @param controllerProofs The `ControllerProofs` struct containing the necessary proofs to authorize the update.
     function preconfirmUpdateWithFork(
         bytes32 id,
         bytes[] calldata confirmedValueHashStorageProof,
@@ -252,7 +251,7 @@ contract BridgedKeystore {
         uint256 conflictingIndex,
         ValueHashPreimages calldata conflictingValueHashPreimages,
         bytes calldata l1BlockData,
-        bytes calldata controllerProof
+        ControllerProofs calldata controllerProofs
     ) external {
         // Extract the confirmed ValueHash from the `confirmedValueHashStorageProof`.
         bytes32 confirmedValueHash = KeystoreLib.extractKeystoreRecordValueHash({
@@ -306,7 +305,7 @@ contract BridgedKeystore {
             newValueHash: newValueHash,
             newValueHashPreimages: newValueHashPreimages,
             l1BlockData: l1BlockData,
-            controllerProof: controllerProof
+            controllerProofs: controllerProofs
         });
 
         // Create a new fork.

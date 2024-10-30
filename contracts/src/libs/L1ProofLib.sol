@@ -101,11 +101,10 @@ library L1ProofLib {
         // Get the block hash corresponding to the provided block number.
         bytes32 blockHash = blockhash(blockHeader.number);
 
-        // TODO: Seems redundant with the next check. Double check that we can remove this require.
-        // Ensure the block hash is available (the block number provided is within the latest 256 most recent blocks).
-        require(blockHash != bytes32(0), BlockHashNotAvailable(blockHeader.number));
-
         // Ensure the block header is valid against the block hash being used.
+        // NOTE: The following check ensures that the returned `blockHash` matches with the `blockHeader.hash`.
+        //       Because `blockHeader.hash` is guaranteed to not be 0, this checks also ensure that the provided
+        //       `blockHeader.number` is not too old.
         require(
             blockHash == blockHeader.hash, InvalidBlockHeader({blockHeaderHash: blockHeader.hash, blockHash: blockHash})
         );
